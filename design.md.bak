@@ -1,0 +1,1846 @@
+# Zotero Library Reconciler
+
+**Architecture & Design Specification**  
+**Target:** Zotero 10  
+**Status:** Concept / Initial Architecture  
+**Last updated:** September 2026
+
+---
+
+## 1. Purpose
+
+Zotero treats **My Library** and each **Group Library** as independent libraries. When the same scholarly work occurs in multiple libraries, the corresponding Zotero items are independent records.
+
+As a result:
+
+- bibliographic metadata can diverge between libraries;
+- corrections made in one library do not propagate to another;
+- duplicate detection does not operate across libraries;
+- references added directly to Group Libraries may never enter a user's My Library;
+- determining which references occur in which libraries requires manual comparison; and
+- deleting or replacing Group Library items can break relationships with existing Zotero citations in documents.
+
+The **Zotero Library Reconciler** addresses this problem without attempting to merge Zotero libraries.
+
+Its core principle is:
+
+> **Identify equivalent scholarly works across Zotero libraries, compare their bibliographic records, and provide safe tools for bringing those records into alignment while preserving the independence of each Zotero item.**
+
+The plugin should distinguish between:
+
+1. **bibliographic identity**, which often should be consistent across libraries; and
+2. **project-specific information**, which often should remain library-specific.
+
+---
+
+# 2. Design Goals
+
+The plugin should:
+
+1. Detect equivalent scholarly works across My Library and Group Libraries.
+2. Identify works present in Group Libraries but absent from My Library.
+3. Identify differences in bibliographic metadata between equivalent items.
+4. Allow users to reconcile metadata selectively.
+5. Preserve existing Zotero item identities.
+6. Preserve existing Zotero document citation links.
+7. Leave project-specific metadata untouched by default.
+8. Provide clear provenance for every proposed change.
+9. Avoid destructive operations wherever possible.
+10. Scale to large Zotero libraries.
+11. Support Zotero 10.
+12. Provide a useful read-only auditing mode before any write operations are enabled.
+
+---
+
+# 3. Non-Goals
+
+The initial plugin should **not**:
+
+- merge Zotero libraries;
+- automatically delete cross-library duplicates;
+- replace Group Library items with My Library items;
+- automatically merge notes;
+- automatically merge annotations;
+- automatically merge collections;
+- automatically merge tags;
+- automatically synchronize attachments;
+- modify existing Word/LibreOffice document citations;
+- assume that My Library always contains the best metadata;
+- continuously synchronize all libraries in the background.
+
+These operations introduce substantially greater risk and should remain outside the initial scope.
+
+---
+
+# 4. Core Concept
+
+The plugin should distinguish between a **Zotero Item** and a **Scholarly Work**.
+
+A Zotero item is library-specific.
+
+For example:
+
+```text
+My Library
+    Item A
+        key: ABC123
+
+Textbook Group
+    Item B
+        key: XYZ789
+
+Waterfowl Group
+    Item C
+        key: QRS456
+```
+
+All three items may represent:
+
+```text
+Smith, J. et al. (2024)
+10.1234/example.2024.001
+```
+
+The plugin therefore introduces a conceptual entity:
+
+```text
+Scholarly Work
+    ├── My Library → Item A
+    ├── Textbook Group → Item B
+    └── Waterfowl Group → Item C
+```
+
+The Scholarly Work does **not** replace Zotero's items.
+
+It is simply the plugin's representation of the relationship among equivalent items.
+
+---
+
+# 5. High-Level Architecture
+
+```text
+┌─────────────────────────────────────────────┐
+│                 Zotero 10                   │
+│                                             │
+│  My Library      Group A       Group B      │
+│      │               │             │        │
+└──────┼───────────────┼─────────────┼────────┘
+       │               │             │
+       └───────────────┼─────────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Library Scanner │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Normalization   │
+              │ Engine          │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Matching Engine │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Scholarly Work  │
+              │ Index           │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Difference      │
+              │ Engine          │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Reconciliation  │
+              │ Interface       │
+              └────────┬────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Safe Write      │
+              │ Engine          │
+              └─────────────────┘
+```
+
+---
+
+# 6. Major Components
+
+## 6.1 Library Scanner
+
+The Library Scanner retrieves eligible items from selected Zotero libraries.
+
+### Responsibilities
+
+- enumerate available libraries;
+- distinguish My Library from Group Libraries;
+- obtain library IDs;
+- retrieve parent bibliographic items;
+- exclude attachments, notes, and annotations from initial matching;
+- retain relationships between parent and child items;
+- record item keys and version information;
+- support incremental rescanning.
+
+### User selection
+
+Users should be able to choose which libraries participate:
+
+```text
+Libraries to compare
+
+☑ My Library
+☑ Human Dimensions Textbook
+☑ Waterfowl Project
+☐ Graduate Student Project
+☑ Creel Survey Project
+```
+
+The plugin should not assume that every accessible Group Library should participate.
+
+---
+
+# 7. Normalization Engine
+
+Metadata must be normalized before matching.
+
+Normalization should **not modify Zotero records**. It creates temporary comparison values.
+
+## DOI
+
+Input:
+
+```text
+https://doi.org/10.1002/jwmg.12345
+doi:10.1002/jwmg.12345
+10.1002/JWMG.12345
+```
+
+Normalized:
+
+```text
+10.1002/jwmg.12345
+```
+
+## Titles
+
+Potential normalization:
+
+```text
+Effects of Harvest Regulations on Waterfowl Hunters
+```
+
+becomes:
+
+```text
+effects of harvest regulations on waterfowl hunters
+```
+
+Normalization may include:
+
+- lowercase;
+- Unicode normalization;
+- whitespace normalization;
+- punctuation normalization;
+- HTML markup removal.
+
+Normalization should **not** remove meaningful words.
+
+## Authors
+
+Normalize:
+
+```text
+Smith, John A.
+Smith, J. A.
+John A. Smith
+```
+
+into a representation suitable for comparison.
+
+Author matching should tolerate differences in initials while remaining conservative about surname differences.
+
+## Dates
+
+Extract a comparable publication year where possible.
+
+## Identifiers
+
+Normalize where appropriate:
+
+- DOI
+- PMID
+- PMCID
+- ISBN
+- arXiv ID
+
+---
+
+# 8. Matching Engine
+
+Matching is the most important component of the system.
+
+False-positive matches are more dangerous than missed matches.
+
+The system should therefore favor **precision over recall**.
+
+## 8.1 Match Hierarchy
+
+### Tier 1 — Exact persistent identifier
+
+Very high confidence.
+
+Examples:
+
+```text
+DOI exact match
+PMID exact match
+arXiv ID exact match
+ISBN + compatible item type
+```
+
+Example:
+
+```text
+My Library:
+10.1002/jwmg.12345
+
+Group Library:
+https://doi.org/10.1002/jwmg.12345
+```
+
+Result:
+
+```text
+EXACT MATCH
+```
+
+---
+
+### Tier 2 — Strong bibliographic match
+
+Used when no persistent identifier is available.
+
+Potential criteria:
+
+```text
+normalized title = exact
+AND
+first author = compatible
+AND
+year = exact
+```
+
+Result:
+
+```text
+HIGH-CONFIDENCE MATCH
+```
+
+---
+
+### Tier 3 — Probable fuzzy match
+
+Potential criteria:
+
+```text
+title similarity > threshold
+AND
+author similarity > threshold
+AND
+year compatible
+```
+
+Result:
+
+```text
+POSSIBLE MATCH — REVIEW REQUIRED
+```
+
+The plugin should never automatically reconcile a Tier 3 match.
+
+---
+
+### Tier 4 — No match
+
+The item is considered unique within the selected libraries.
+
+This is especially important for identifying:
+
+> Items occurring in Group Libraries that do not occur in My Library.
+
+---
+
+# 9. Match Confidence
+
+Every relationship should have a transparent confidence classification.
+
+Example:
+
+```text
+EXACT
+DOI identical
+
+HIGH
+Title + first author + year identical
+
+MEDIUM
+Title similarity + author similarity + year
+
+LOW
+Potential relationship requiring manual review
+```
+
+The UI should display **why** two items were matched.
+
+Example:
+
+```text
+Match confidence: EXACT
+
+Evidence:
+✓ DOI identical
+✓ publication year identical
+✓ first author identical
+✓ normalized titles identical
+```
+
+Users should never have to guess why the plugin considers two items equivalent.
+
+---
+
+# 10. Scholarly Work Index
+
+After matching, the plugin creates an internal index.
+
+Example:
+
+```yaml
+work:
+  canonical_identifier: "doi:10.1002/jwmg.12345"
+
+  instances:
+    - library_id: 1
+      library_name: "My Library"
+      item_key: "ABC123"
+
+    - library_id: 27
+      library_name: "HD Textbook"
+      item_key: "XYZ789"
+
+    - library_id: 42
+      library_name: "Waterfowl"
+      item_key: "QRS456"
+```
+
+This index should be considered **derived data**.
+
+It must always be possible to rebuild it from Zotero.
+
+---
+
+# 11. Difference Engine
+
+Once equivalent records have been identified, their bibliographic fields are compared.
+
+Example:
+
+| Field | My Library | Textbook Group | Waterfowl Group |
+|---|---|---|---|
+| Title | Smith et al... | Smith et al... | Smith et al... |
+| Journal | JWM | Journal of Wildlife Management | Journal of Wildlife Management |
+| Volume | 88 | 88 | 88 |
+| Issue | — | 4 | 4 |
+| Pages | — | 1021–1034 | 1021–1034 |
+| DOI | identical | identical | identical |
+
+The engine should classify fields as:
+
+```text
+IDENTICAL
+DIFFERENT
+MISSING
+CONFLICTING
+```
+
+---
+
+# 12. Fields Eligible for Reconciliation
+
+Version 1 should focus on bibliographic metadata.
+
+Recommended fields include:
+
+- item type;
+- title;
+- creators;
+- abstract;
+- publication title;
+- journal abbreviation;
+- volume;
+- issue;
+- pages;
+- date;
+- DOI;
+- ISBN;
+- ISSN;
+- URL;
+- publisher;
+- place;
+- edition;
+- language;
+- rights;
+- extra.
+
+Fields should be handled according to Zotero item type.
+
+---
+
+# 13. Fields Excluded by Default
+
+The following should **not** be automatically reconciled:
+
+- collections;
+- tags;
+- notes;
+- annotations;
+- attachments;
+- related items;
+- date added;
+- date modified.
+
+These are often intentionally library-specific.
+
+Future versions could provide explicit tools for comparing some of these fields.
+
+---
+
+# 14. Reconciliation Interface
+
+The primary interface should be a dashboard.
+
+Example:
+
+```text
+Zotero Library Reconciler
+──────────────────────────────────────────
+
+Libraries scanned:       8
+Bibliographic items:     12,481
+Scholarly works:         9,742
+
+Cross-library works:     2,108
+Metadata conflicts:        347
+Missing from My Library:   623
+Possible matches:           41
+```
+
+Primary views:
+
+```text
+Overview
+Missing from My Library
+Metadata Differences
+Possible Matches
+Library Coverage
+```
+
+---
+
+# 15. Missing from My Library
+
+This should be a major first-class feature.
+
+Example:
+
+```text
+623 scholarly works occur in Group Libraries
+but do not occur in My Library.
+```
+
+Table:
+
+| Work | Found In | Identifier | Action |
+|---|---|---|---|
+| Smith 2024 | Textbook | DOI | Add |
+| Jones 2021 | Waterfowl | DOI | Add |
+| Lee 2025 | Textbook + Creel | DOI | Add |
+
+Actions:
+
+```text
+[ Add Selected to My Library ]
+[ Add All Exact Matches ]
+```
+
+The plugin should **copy** records rather than move them.
+
+Existing Group Library items remain untouched.
+
+---
+
+# 16. Metadata Reconciliation
+
+Selecting a work should show all copies side-by-side.
+
+Example:
+
+```text
+Smith et al. 2024
+DOI: 10.1002/jwmg.12345
+```
+
+| Field | My Library | Textbook |
+|---|---|---|
+| Title | identical | identical |
+| Journal | JWM | Journal of Wildlife Management |
+| Volume | 88 | 88 |
+| Issue | — | 4 |
+| Pages | — | 1021–1034 |
+
+Possible actions:
+
+```text
+← Use Textbook value
+→ Use My Library value
+```
+
+At the record level:
+
+```text
+[ Update My Library from Textbook ]
+
+[ Update Textbook from My Library ]
+```
+
+The user should be able to preview all proposed changes before committing them.
+
+---
+
+# 17. Canonical Library
+
+Users should optionally be able to designate a preferred library.
+
+Default:
+
+```text
+Canonical library: My Library
+```
+
+This means:
+
+> When multiple equivalent records differ, prefer My Library when suggesting values.
+
+It does **not** mean:
+
+> Automatically overwrite other libraries.
+
+The canonical library influences recommendations only.
+
+---
+
+# 18. Best-Available Metadata
+
+A future enhancement could determine which record appears most complete.
+
+For example:
+
+```text
+My Library
+DOI ✓
+Issue —
+Pages —
+Abstract —
+
+Textbook
+DOI ✓
+Issue ✓
+Pages ✓
+Abstract ✓
+```
+
+The plugin could report:
+
+```text
+Textbook contains 3 bibliographic fields
+missing from My Library.
+```
+
+It should not claim that the Textbook copy is objectively "correct."
+
+Completeness and correctness are different concepts.
+
+---
+
+# 19. External Metadata Validation
+
+A later version could optionally validate records against authoritative external sources.
+
+Potential sources:
+
+- Crossref;
+- PubMed;
+- DataCite;
+- OpenAlex;
+- Library of Congress;
+- ISBN metadata services.
+
+Architecture:
+
+```text
+Zotero copies
+      │
+      ▼
+Cross-library comparison
+      │
+      ▼
+External metadata lookup
+      │
+      ▼
+Proposed canonical metadata
+```
+
+External metadata should always be shown as another source rather than silently replacing Zotero metadata.
+
+Example:
+
+| Field | My Library | Group | Crossref |
+|---|---|---|---|
+| Issue | — | 4 | 4 |
+| Pages | — | 1021–1034 | 1021–1034 |
+
+This provides stronger evidence for reconciliation.
+
+---
+
+# 20. Attachments
+
+Attachments should initially be **audited but not synchronized**.
+
+Useful reporting:
+
+```text
+Smith 2024
+
+My Library:
+✓ PDF
+
+Textbook:
+✓ PDF
+✓ Supplemental material
+
+Waterfowl:
+No attachments
+```
+
+Potential future actions:
+
+```text
+[ Copy PDF to My Library ]
+[ Copy Supplemental Material ]
+```
+
+Attachment copying should never occur automatically.
+
+---
+
+# 21. Notes and Annotations
+
+Notes and annotations should remain library-specific by default.
+
+The plugin could report their existence:
+
+```text
+My Library
+2 notes
+14 annotations
+
+Textbook
+1 note
+6 annotations
+```
+
+But it should not attempt to determine which notes are canonical.
+
+Future functionality could allow explicit copying.
+
+---
+
+# 22. Tags
+
+Tags are especially ambiguous.
+
+Example:
+
+```text
+My Library:
+waterfowl
+human dimensions
+harvest
+
+Textbook:
+chapter-7
+box-7-2
+needs-citation
+```
+
+Both sets may be correct.
+
+Therefore:
+
+> Tags should not be considered bibliographic discrepancies.
+
+A future comparison view may allow users to inspect or copy tags manually.
+
+---
+
+# 23. Collections
+
+Collections should remain entirely library-specific.
+
+No reconciliation should occur.
+
+A copied item added to My Library could optionally be placed in a dedicated collection:
+
+```text
+Library Reconciler Imports
+    ├── From HD Textbook
+    ├── From Waterfowl
+    └── From Creel Survey
+```
+
+This would make large consolidation operations reversible and auditable.
+
+---
+
+# 24. Existing Zotero Citations
+
+This is a critical safety constraint.
+
+Existing Zotero citations in Word, LibreOffice, or other supported documents may refer to specific Zotero item identities.
+
+Therefore the plugin must:
+
+> **Never delete or replace a cross-library Zotero item merely because an equivalent item exists elsewhere.**
+
+Instead:
+
+```text
+My Library item
+      │
+      │ equivalent scholarly work
+      │
+Group Library item
+```
+
+Both continue to exist.
+
+Only selected metadata fields are copied between them.
+
+---
+
+# 25. Write Safety
+
+Every write operation should follow:
+
+```text
+SCAN
+  ↓
+MATCH
+  ↓
+COMPARE
+  ↓
+PROPOSE
+  ↓
+PREVIEW
+  ↓
+CONFIRM
+  ↓
+WRITE
+  ↓
+LOG
+```
+
+There should be no:
+
+```text
+SCAN → AUTOMATIC OVERWRITE
+```
+
+in the initial implementation.
+
+---
+
+# 26. Transaction Log
+
+Every modification should be logged.
+
+Example:
+
+```yaml
+timestamp: 2026-09-15T14:32:11
+action: update_metadata
+
+target:
+  library: My Library
+  item: ABC123
+
+source:
+  library: HD Textbook
+  item: XYZ789
+
+changes:
+  issue:
+    old: null
+    new: "4"
+
+  pages:
+    old: null
+    new: "1021-1034"
+```
+
+The log should support:
+
+- auditing;
+- troubleshooting;
+- potential undo;
+- identifying which library supplied a value.
+
+---
+
+# 27. Undo
+
+Where Zotero's API permits it, write operations should integrate with Zotero's undo system.
+
+If complete undo integration is not possible, the plugin should maintain sufficient transaction data to reverse its own changes.
+
+For example:
+
+```text
+Reconciliation Session
+September 15, 2026 · 2:32 PM
+
+347 items modified
+
+[ Undo Session ]
+```
+
+---
+
+# 28. Dry-Run Mode
+
+The first release should support a completely read-only mode.
+
+Example:
+
+```text
+Analyze Libraries
+```
+
+rather than:
+
+```text
+Synchronize Libraries
+```
+
+The output would identify:
+
+```text
+623 missing from My Library
+347 metadata discrepancies
+41 possible duplicates
+2,108 works occurring in multiple libraries
+```
+
+No Zotero data would be changed.
+
+This mode alone would provide substantial value.
+
+---
+
+# 29. Incremental Scanning
+
+Large Zotero installations should not require complete rescanning every time.
+
+The plugin should record:
+
+- library versions;
+- item versions;
+- last scan timestamp.
+
+Then:
+
+```text
+Initial scan:
+12,481 items
+
+Next scan:
+143 items changed
+37 items added
+12 items deleted
+```
+
+Only changed records need to be reprocessed.
+
+---
+
+# 30. Performance Strategy
+
+For large libraries:
+
+1. Retrieve minimal identifying metadata first.
+2. Normalize identifiers.
+3. Build hash maps for exact identifiers.
+4. Resolve exact matches.
+5. Only perform fuzzy matching on unmatched records.
+
+Example:
+
+```text
+12,481 items
+     ↓
+DOI/PMID/ISBN matching
+     ↓
+10,900 resolved
+     ↓
+1,581 unresolved
+     ↓
+Title/author/year matching
+     ↓
+1,420 resolved
+     ↓
+161 candidates for fuzzy comparison
+```
+
+Expensive fuzzy comparisons should therefore involve only a small subset of the library.
+
+---
+
+# 31. Matching Data Structures
+
+Possible in-memory indexes:
+
+```text
+doiIndex:
+    DOI → [item references]
+
+pmidIndex:
+    PMID → [item references]
+
+isbnIndex:
+    ISBN → [item references]
+
+titleAuthorYearIndex:
+    normalized composite key → [item references]
+```
+
+Example:
+
+```javascript
+doiIndex.get("10.1002/jwmg.12345")
+```
+
+could return:
+
+```text
+[
+  { libraryID: 1, itemKey: "ABC123" },
+  { libraryID: 27, itemKey: "XYZ789" },
+  { libraryID: 42, itemKey: "QRS456" }
+]
+```
+
+---
+
+# 32. Plugin Data Storage
+
+Plugin-specific data should remain separate from Zotero bibliographic data wherever possible.
+
+Potential local database tables:
+
+```text
+works
+work_items
+matches
+match_evidence
+scan_state
+transactions
+preferences
+```
+
+Conceptually:
+
+```text
+works
+─────
+work_id
+
+work_items
+──────────
+work_id
+library_id
+item_key
+match_confidence
+
+scan_state
+──────────
+library_id
+last_library_version
+last_scan
+
+transactions
+────────────
+transaction_id
+timestamp
+action
+source_item
+target_item
+before
+after
+```
+
+---
+
+# 33. Zotero 10 Integration
+
+The plugin should use Zotero's current plugin architecture and APIs rather than relying on deprecated Zotero 6/7 interfaces.
+
+Major integration points include:
+
+- Zotero library enumeration;
+- Zotero item APIs;
+- collection APIs;
+- item save/update operations;
+- Zotero notifications;
+- library/item version information;
+- Zotero preference storage;
+- Zotero 10 multiple-selection behavior.
+
+Compatibility should explicitly target:
+
+```text
+Zotero 10.x
+```
+
+rather than assuming compatibility from older Zotero plugin APIs.
+
+---
+
+# 34. User Entry Points
+
+Potential entry points:
+
+## Tools menu
+
+```text
+Tools
+    Library Reconciler...
+```
+
+## Library context menu
+
+If multiple libraries are selected:
+
+```text
+Compare Selected Libraries
+```
+
+Zotero 10's support for multiple selected libraries makes this particularly attractive.
+
+## Item context menu
+
+For a selected item:
+
+```text
+Find Copies in Other Libraries
+```
+
+This could provide a very useful lightweight feature independent of the full dashboard.
+
+---
+
+# 35. "Find Copies" Feature
+
+A single-item operation could be one of the first implemented features.
+
+Example:
+
+User right-clicks:
+
+```text
+Smith et al. 2024
+```
+
+and selects:
+
+```text
+Find Copies in Other Libraries
+```
+
+Result:
+
+```text
+Found in:
+
+✓ My Library
+✓ HD Textbook
+✓ Waterfowl Project
+— Creel Survey
+```
+
+Then:
+
+```text
+[ Compare Metadata ]
+```
+
+This feature provides an excellent way to test the matching engine before building full-library reconciliation.
+
+---
+
+# 36. Library Coverage View
+
+The plugin could provide a matrix showing how scholarly works are distributed.
+
+Example:
+
+| Work | My Library | Textbook | Waterfowl | Creel |
+|---|:---:|:---:|:---:|:---:|
+| Smith 2024 | ✓ | ✓ | ✓ | |
+| Jones 2022 | ✓ | ✓ | | |
+| Lee 2025 | | ✓ | ✓ | |
+| Brown 2019 | ✓ | | | ✓ |
+
+This could reveal unexpected gaps in My Library or project libraries.
+
+---
+
+# 37. Conflict Resolution
+
+Conflicts should be handled at two levels.
+
+## Field level
+
+```text
+Issue
+
+My Library: —
+Textbook:   4
+Waterfowl:  4
+
+Suggested:
+4
+
+Reason:
+Two copies contain the same non-empty value.
+```
+
+## Record level
+
+```text
+Use metadata from:
+
+○ My Library
+● Textbook
+○ Waterfowl
+
+[ Preview Changes ]
+```
+
+Suggestions must always remain suggestions until confirmed.
+
+---
+
+# 38. Automatic Recommendations
+
+Safe recommendations may be possible when:
+
+```text
+My Library field = empty
+AND
+all other copies containing that field agree
+```
+
+Example:
+
+```text
+My Library:
+Issue = —
+
+Textbook:
+Issue = 4
+
+Waterfowl:
+Issue = 4
+```
+
+Recommendation:
+
+```text
+Add issue "4" to My Library.
+```
+
+Much less safe:
+
+```text
+My Library:
+Issue = 3
+
+Textbook:
+Issue = 4
+
+Waterfowl:
+Issue = 4
+```
+
+Result:
+
+```text
+CONFLICT — REVIEW REQUIRED
+```
+
+The plugin should distinguish **missing information** from **contradictory information**.
+
+---
+
+# 39. Permission Handling
+
+Group Library permissions vary.
+
+The plugin must determine whether each library is:
+
+```text
+READ/WRITE
+READ ONLY
+```
+
+Read-only libraries can participate fully in:
+
+- scanning;
+- matching;
+- comparison;
+- copying information *from* the library.
+
+They cannot be reconciliation targets.
+
+The UI should make this explicit.
+
+---
+
+# 40. Error Handling
+
+Potential errors include:
+
+- Zotero sync occurring during reconciliation;
+- item deleted since scan;
+- library permissions changed;
+- target item modified since comparison;
+- attachment unavailable;
+- network failure for external validation.
+
+Before committing a change, the plugin should verify that the target item's version still matches the version used during comparison.
+
+If not:
+
+```text
+This item changed after the reconciliation scan.
+
+[ Recompare ]
+```
+
+rather than overwriting newer data.
+
+---
+
+# 41. Privacy
+
+Core reconciliation should operate entirely on local Zotero data.
+
+External metadata validation should be:
+
+- optional;
+- clearly indicated;
+- disabled by default if appropriate;
+- limited to identifiers or bibliographic queries necessary for validation.
+
+No notes, annotations, or PDFs should ever be sent to external metadata services.
+
+---
+
+# 42. Development Phases
+
+## Phase 1 — Cross-Library Audit
+
+**Read only.**
+
+Implement:
+
+- enumerate libraries;
+- scan bibliographic items;
+- normalize identifiers;
+- exact DOI/PMID/ISBN matching;
+- title + author + year matching;
+- Scholarly Work index;
+- identify works missing from My Library;
+- identify metadata differences;
+- dashboard;
+- export reconciliation report.
+
+No Zotero data modifications.
+
+### Deliverable
+
+A user can answer:
+
+> What scholarly works occur across my Zotero libraries, where do they occur, and where do their records disagree?
+
+---
+
+## Phase 2 — Find Copies
+
+Implement:
+
+```text
+Right click item
+→ Find Copies in Other Libraries
+```
+
+Provide:
+
+- matched items;
+- match evidence;
+- metadata comparison.
+
+Still read-only.
+
+---
+
+## Phase 3 — Add Missing Items to My Library
+
+Implement:
+
+```text
+[ Add Selected to My Library ]
+```
+
+Safeguards:
+
+- exact/high-confidence matches only;
+- preview;
+- dedicated import collection;
+- transaction log.
+
+---
+
+## Phase 4 — Metadata Reconciliation
+
+Implement:
+
+- field-level comparison;
+- source selection;
+- target selection;
+- preview;
+- write operations;
+- transaction logging;
+- undo.
+
+---
+
+## Phase 5 — Incremental Monitoring
+
+Implement:
+
+- item/library version tracking;
+- rescan only changed records;
+- optional notification:
+
+```text
+17 cross-library discrepancies detected
+since your last scan.
+```
+
+This should remain informational rather than automatically modifying records.
+
+---
+
+## Phase 6 — External Validation
+
+Optional integrations:
+
+- Crossref;
+- PubMed;
+- DataCite;
+- OpenAlex.
+
+Use external metadata as an additional comparison source.
+
+---
+
+## Phase 7 — Extended Content
+
+Potentially add explicit tools for:
+
+- attachments;
+- tags;
+- notes;
+- annotations.
+
+These should remain opt-in and manually controlled.
+
+---
+
+# 43. Minimum Viable Product
+
+The MVP should be deliberately narrow.
+
+### MVP features
+
+```text
+✓ Zotero 10 support
+✓ My Library + Group Library scanning
+✓ DOI matching
+✓ PMID matching
+✓ ISBN matching
+✓ exact title + author + year matching
+✓ cross-library Scholarly Work index
+✓ missing-from-My-Library report
+✓ bibliographic discrepancy report
+✓ match confidence/evidence
+✓ read-only operation
+```
+
+The MVP does **not need to modify Zotero at all**.
+
+That dramatically reduces development risk.
+
+---
+
+# 44. MVP Success Criteria
+
+The MVP succeeds if a user with multiple Zotero libraries can determine:
+
+1. Which scholarly works occur in multiple libraries?
+2. Which works occur in Group Libraries but not My Library?
+3. Which copies contain conflicting bibliographic metadata?
+4. Why did the plugin decide two items represent the same work?
+5. Which matches require human review?
+
+with **zero changes to the underlying Zotero database**.
+
+---
+
+# 45. Proposed Repository Structure
+
+```text
+zotero-library-reconciler/
+│
+├── src/
+│   ├── scanner/
+│   │   ├── libraryScanner.ts
+│   │   └── itemScanner.ts
+│   │
+│   ├── normalization/
+│   │   ├── doi.ts
+│   │   ├── title.ts
+│   │   ├── creators.ts
+│   │   └── identifiers.ts
+│   │
+│   ├── matching/
+│   │   ├── exactMatcher.ts
+│   │   ├── bibliographicMatcher.ts
+│   │   ├── fuzzyMatcher.ts
+│   │   └── matchEvidence.ts
+│   │
+│   ├── works/
+│   │   └── scholarlyWorkIndex.ts
+│   │
+│   ├── comparison/
+│   │   ├── fieldComparator.ts
+│   │   └── recordComparator.ts
+│   │
+│   ├── reconciliation/
+│   │   ├── proposalEngine.ts
+│   │   ├── writeEngine.ts
+│   │   └── transactionLog.ts
+│   │
+│   ├── ui/
+│   │   ├── dashboard/
+│   │   ├── compare/
+│   │   └── preferences/
+│   │
+│   └── zotero/
+│       ├── api.ts
+│       ├── notifications.ts
+│       └── permissions.ts
+│
+├── tests/
+│   ├── normalization/
+│   ├── matching/
+│   ├── comparison/
+│   └── fixtures/
+│
+├── docs/
+│   ├── architecture.md
+│   ├── matching.md
+│   └── safety.md
+│
+├── manifest.json
+├── package.json
+└── README.md
+```
+
+---
+
+# 46. Testing Strategy
+
+Matching requires especially strong tests.
+
+Test fixtures should include:
+
+### Exact DOI
+
+```text
+10.1002/jwmg.12345
+https://doi.org/10.1002/jwmg.12345
+```
+
+Expected:
+
+```text
+MATCH
+```
+
+### Same title, different capitalization
+
+Expected:
+
+```text
+MATCH
+```
+
+### Same title, different year
+
+Expected:
+
+```text
+REVIEW or NO MATCH
+```
+
+### Similar titles, different papers
+
+Example:
+
+```text
+Effects of harvest regulations on duck hunters
+
+Effects of harvest regulations on goose hunters
+```
+
+Expected:
+
+```text
+NO AUTOMATIC MATCH
+```
+
+### Missing DOI in one library
+
+Expected:
+
+```text
+match through bibliographic evidence
+```
+
+### Incorrect DOI
+
+Expected:
+
+```text
+identifier conflict
+```
+
+### Conference paper versus journal article with similar title
+
+Expected:
+
+```text
+NO AUTOMATIC MATCH
+```
+
+### Preprint versus published article
+
+Expected:
+
+```text
+RELATED / REVIEW
+```
+
+rather than automatically assuming they are identical.
+
+---
+
+# 47. Important Edge Cases
+
+The design should explicitly consider:
+
+- preprint versus published paper;
+- early-online versus final publication;
+- corrected article;
+- erratum;
+- translated editions;
+- book editions;
+- chapters appearing in multiple editions;
+- conference abstract versus journal article;
+- identical titles by different authors;
+- title changes between online-first and final publication;
+- DOI entered incorrectly in one library;
+- duplicate DOI metadata;
+- corporate authors;
+- missing publication dates;
+- datasets sharing titles with papers;
+- reports without persistent identifiers.
+
+---
+
+# 48. Guiding Safety Principle
+
+The fundamental safety principle should be:
+
+> **False negatives are inconvenient. False positives can damage a library.**
+
+Therefore:
+
+```text
+When uncertain → ask the user.
+```
+
+not:
+
+```text
+When uncertain → merge or overwrite.
+```
+
+---
+
+# 49. Product Philosophy
+
+Library Reconciler should not attempt to turn Zotero's independent libraries into a single synchronized database.
+
+Instead, it should acknowledge that independent libraries are useful.
+
+A Group Library may legitimately contain:
+
+- project-specific notes;
+- project-specific tags;
+- collaborative annotations;
+- different attachments;
+- different collection structures.
+
+What should be shared is the **identity and bibliographic description of the scholarly work**, when appropriate.
+
+The architecture therefore follows:
+
+```text
+Independent Zotero Items
+          │
+          ▼
+Shared Scholarly Identity
+          │
+          ▼
+Compare
+          │
+          ▼
+Reconcile selectively
+```
+
+rather than:
+
+```text
+Independent Zotero Items
+          │
+          ▼
+Force everything to become identical
+```
+
+---
+
+# 50. Long-Term Vision
+
+A mature Library Reconciler could give Zotero a conceptual layer currently missing from its library model:
+
+> **The same scholarly work can exist as multiple independent Zotero items while Zotero understands that those items represent the same intellectual object.**
+
+That would enable functionality beyond reconciliation:
+
+```text
+Find this paper everywhere
+
+Compare metadata everywhere
+
+Show which projects use this paper
+
+Find papers missing from My Library
+
+Identify the most complete metadata
+
+Audit PDFs across libraries
+
+Identify annotation locations
+
+Track cross-library use
+
+Validate bibliographic metadata
+
+Copy selected metadata safely
+```
+
+without destroying the independence of Group Libraries.
+
+The plugin's central abstraction—the **Scholarly Work Index**—is therefore potentially more valuable than synchronization itself.
+
+---
+
+# 51. Recommended Initial Development Path
+
+The safest and most useful development sequence is:
+
+```text
+1. Build Zotero 10 library scanner
+           ↓
+2. Build normalization engine
+           ↓
+3. Build exact identifier matcher
+           ↓
+4. Build title/author/year matcher
+           ↓
+5. Build Scholarly Work index
+           ↓
+6. Produce Missing from My Library report
+           ↓
+7. Produce Metadata Differences report
+           ↓
+8. Add Find Copies command
+           ↓
+9. Validate matching on real libraries
+           ↓
+10. Only then implement write operations
+```
+
+The key architectural decision is to **separate detection from modification**.
+
+A reliable cross-library audit engine is useful by itself and provides the foundation for every subsequent reconciliation feature.
+
+---
+
+## Summary
+
+Zotero Library Reconciler should be built around three principles:
+
+**Identity without merging.**  
+Recognize that separate Zotero items can represent the same scholarly work.
+
+**Comparison before synchronization.**  
+Expose differences and provenance before changing anything.
+
+**Conservative modification.**  
+Preserve Zotero item identities, existing citation links, project-specific metadata, and user control.
+
+The first version should therefore be a **read-only Zotero 10 cross-library auditing tool**. Once its matching engine has demonstrated high reliability, controlled metadata reconciliation can be layered onto that foundation.

@@ -1,0 +1,19 @@
+{
+  "name": "zotero-library-reconciler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only cross-library reconciliation tools for Zotero 10.",
+  "scripts": {
+    "build": "mkdir -p dist/chrome/content && esbuild src/plugin/runtime.ts --bundle --format=iife --platform=browser --target=firefox115 --outfile=dist/chrome/content/runtime.js && cp src/plugin/bootstrap.js dist/bootstrap.js && cp manifest.json chrome.manifest dist/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

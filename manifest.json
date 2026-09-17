@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "Zotero Library Reconciler",
+  "version": "0.1.0",
+  "description": "Read-only cross-library match auditing for Zotero.",
+  "author": "Zotero Library Reconciler contributors",
+  "applications": {
+    "zotero": {
+      "id": "zotero-library-reconciler@cchizinski2.local",
+      "update_url": "https://example.invalid/zotero-library-reconciler/updates.json",
+      "strict_min_version": "10.0",
+      "strict_max_version": "10.0.*"
+    }
+  }
+}

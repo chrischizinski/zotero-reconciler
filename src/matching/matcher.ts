@@ -1,0 +1,148 @@
+import { normalizeItem } from "./normalize.js";
+import { CANONICAL_TYPE_RANK } from "./types.js";
+import type { MatchEvidence, MatchResult, NormalizedItem, ScannedItem, TitleRelation, TypeRelation } from "./types.js";
+
+const RELATED_TYPE_PAIRS = new Set([
+  "journalarticle|preprint",
+  "conferencepaper|journalarticle",
+  "book|thesis"
+]);
+
+export function matchItems(leftInput: ScannedItem, rightInput: ScannedItem): MatchResult {
+  return matchNormalizedItems(normalizeItem(leftInput), normalizeItem(rightInput));
+}
+
+export function matchNormalizedItems(left: NormalizedItem, right: NormalizedItem): MatchResult {
+  const titleRelation = compareTitles(left, right);
+  const typeRelation = compareTypes(left.itemType, right.itemType);
+  const evidence: MatchEvidence[] = [];
+
+  if (typeRelation === "incompatible") {
+    return result("no-match", "none", [{ rule: "D6", detail: "Item types are incompatible." }], titleRelation, typeRelation);
+  }
+
+  const sharedIdentifiers = matchingIdentifiers(left, right);
+  if (sharedIdentifiers.length > 0) {
+    for (const identifier of sharedIdentifiers) evidence.push({ rule: "Tier 1", detail: `${identifier} identical.` });
+    if (typeRelation === "related") {
+      evidence.push({ rule: "§8.4", detail: `Related item types share an identifier; ${canonicalItemType(left.itemType, right.itemType)} is the canonical record.` });
+    }
+    return result("match", "exact", evidence, titleRelation, typeRelation);
+  }
+
+  const denial = denialEvidence(left, right);
+  if (denial) return result("no-match", "none", [denial], titleRelation, typeRelation);
+
+  if (typeRelation === "related") {
+    if ((titleRelation === "equivalent" || titleRelation === "addition-only") && creatorsCompatible(left, right) && yearsCompatible(left, right)) {
+      return result("related", "none", [
+        { rule: "§8.4", detail: "Item types represent related publication forms." },
+        { rule: "§7", detail: "Title, creators, and year support a related-work classification." }
+      ], titleRelation, typeRelation);
+    }
+    return result("no-match", "none", [{ rule: "Tier 4", detail: "Related item types without same-work evidence." }], titleRelation, typeRelation);
+  }
+
+  if (titleRelation === "equivalent" || titleRelation === "addition-only") {
+    if (creatorsCompatible(left, right) && yearsCompatible(left, right)) {
+      return result("match", "high", [
+        { rule: "Tier 2", detail: `Title relation: ${titleRelation}.` },
+        { rule: "§7", detail: "Creators compatible." },
+        { rule: "§7", detail: "Years compatible." }
+      ], titleRelation, typeRelation);
+    }
+  }
+
+  if (titleRelation === "substitution" && likelyTypo(left.titleWords, right.titleWords) && creatorsCompatible(left, right) && yearsCompatible(left, right)) {
+    return result("review", "review", [{ rule: "Tier 3", detail: "Near-identical substituted title word; manual review required." }], titleRelation, typeRelation);
+  }
+
+  const terminalEvidence = titleRelation === "substitution"
+    ? { rule: "D7", detail: "Titles contain content-word substitutions and are not a review candidate." }
+    : { rule: "Tier 4", detail: "No supported match evidence." };
+  return result("no-match", "none", [terminalEvidence], titleRelation, typeRelation);
+}
+
+function result(verdict: MatchResult["verdict"], tier: MatchResult["tier"], evidence: readonly MatchEvidence[], titleRelation: TitleRelation, typeRelation: TypeRelation): MatchResult {
+  return { verdict, tier, evidence, titleRelation, typeRelation };
+}
+
+function matchingIdentifiers(left: NormalizedItem, right: NormalizedItem): string[] {
+  const keys: (keyof NormalizedItem["identifiers"])[] = ["doi", "isbn13", "pmid", "pmcid", "arxiv"];
+  return keys.filter((key) => left.identifiers[key] && left.identifiers[key] === right.identifiers[key]);
+}
+
+/**
+ * Denial rules D1–D6 (§8.0). Exported for whole-cluster checks (§8.2): a Tier 2 edge may
+ * only union two clusters when no member pair across them is denied.
+ */
+export function denialEvidence(left: NormalizedItem, right: NormalizedItem): MatchEvidence | undefined {
+  if (compareTypes(left.itemType, right.itemType) === "incompatible") return { rule: "D6", detail: "Item types are incompatible." };
+  if (different(left.identifiers.doi, right.identifiers.doi)) return { rule: "D1", detail: "Normalized DOIs differ." };
+  if (different(left.identifiers.isbn13, right.identifiers.isbn13)) return { rule: "D2", detail: "Canonical ISBN-13 values differ." };
+  if (different(left.identifiers.pmid, right.identifiers.pmid)) return { rule: "D3", detail: "PMIDs differ." };
+  if (left.year !== undefined && right.year !== undefined && Math.abs(left.year - right.year) > 1) return { rule: "D5", detail: "Publication years differ by more than one." };
+  return undefined;
+}
+
+function different(left: string | undefined, right: string | undefined): boolean {
+  return left !== undefined && right !== undefined && left !== right;
+}
+
+function compareTitles(left: NormalizedItem, right: NormalizedItem): TitleRelation {
+  if (!left.normalizedTitle || !right.normalizedTitle) return "missing";
+  if (sameMembers(left.titleWords, right.titleWords)) return "equivalent";
+  if (properSubset(left.titleWords, right.titleWords) || properSubset(right.titleWords, left.titleWords)) return "addition-only";
+  return "substitution";
+}
+
+/** Picks the published form among related item types (§8.4). Ties keep the left type. */
+export function canonicalItemType(left: string, right: string): string {
+  const rank = (type: string): number => CANONICAL_TYPE_RANK[type.toLowerCase()] ?? Number.MAX_SAFE_INTEGER;
+  return rank(right) < rank(left) ? right : left;
+}
+
+function compareTypes(left: string, right: string): TypeRelation {
+  const normalizedLeft = left.toLowerCase();
+  const normalizedRight = right.toLowerCase();
+  if (normalizedLeft === normalizedRight) return "compatible";
+  return RELATED_TYPE_PAIRS.has([normalizedLeft, normalizedRight].sort().join("|")) ? "related" : "incompatible";
+}
+
+function creatorsCompatible(left: NormalizedItem, right: NormalizedItem): boolean {
+  if (left.creatorKeys.length === 0 && right.creatorKeys.length === 0) return true;
+  if (left.creatorKeys.length === 0 || right.creatorKeys.length === 0) return false;
+  return left.creatorKeys.some((key) => right.creatorKeys.includes(key));
+}
+
+function yearsCompatible(left: NormalizedItem, right: NormalizedItem): boolean {
+  return left.year === undefined || right.year === undefined || Math.abs(left.year - right.year) <= 1;
+}
+
+function sameMembers(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function properSubset(left: readonly string[], right: readonly string[]): boolean {
+  return left.length < right.length && left.every((value) => right.includes(value));
+}
+
+function likelyTypo(left: readonly string[], right: readonly string[]): boolean {
+  const leftOnly = left.filter((word) => !right.includes(word));
+  const rightOnly = right.filter((word) => !left.includes(word));
+  return leftOnly.length === 1 && rightOnly.length === 1 && levenshtein(leftOnly[0]!, rightOnly[0]!) <= 1;
+}
+
+function levenshtein(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = previous[0]!;
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const above = previous[j]!;
+      previous[j] = Math.min(previous[j]! + 1, previous[j - 1]! + 1, diagonal + Number(left[i - 1] !== right[j - 1]));
+      diagonal = above;
+    }
+  }
+  return previous[right.length]!;
+}
