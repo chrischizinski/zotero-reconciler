@@ -19,15 +19,34 @@ export function matchItems(leftInput: ScannedItem, rightInput: ScannedItem, opti
 }
 
 export function matchNormalizedItems(left: NormalizedItem, right: NormalizedItem, options: MatchOptions = {}): MatchResult {
+  if (!options.ignoreLinkedItems && areLinked(left, right)) return matchLinkedItems(left, right);
+  return matchByRules(left, right);
+}
+
+/**
+ * Tier 0 (§8.0a). Zotero recorded that one record was copied from the other. The relation
+ * proves a copy *event*, not that the records still describe the same work: on real data
+ * (2026-09-17) half the linked pairs the rules rejected had been repurposed into different
+ * papers after copying. So the link corroborates, it never overrides a denial:
+ *
+ *   rules say match              → EXACT, link added as evidence
+ *   rules deny or find nothing   → REVIEW, never NO MATCH (a stale link also breaks Zotero's
+ *                                  own drag-copy, so the user should see it)
+ */
+function matchLinkedItems(left: NormalizedItem, right: NormalizedItem): MatchResult {
+  const link: MatchEvidence = { rule: "Tier 0", detail: "Zotero linked items (owl:sameAs): one record was copied from the other." };
+  const rules = matchByRules(left, right);
+  if (rules.verdict === "match") return { ...rules, tier: "exact", evidence: [link, ...rules.evidence] };
+  const diverged = rules.titleRelation === "substitution" || rules.titleRelation === "missing"
+    ? "Titles no longer agree; the link is probably stale (one record was repurposed after copying)."
+    : "Titles agree but the bibliographic rules do not; one record likely holds a wrong identifier or type.";
+  return { ...rules, verdict: "review", tier: "review", evidence: [link, ...rules.evidence, { rule: "§8.0a", detail: `${diverged} Manual review required.` }] };
+}
+
+function matchByRules(left: NormalizedItem, right: NormalizedItem): MatchResult {
   const titleRelation = compareTitles(left, right);
   const typeRelation = compareTypes(left.itemType, right.itemType);
   const evidence: MatchEvidence[] = [];
-
-  // Tier 0 (§8.0): Zotero itself recorded that one record was copied from the other. That is a
-  // user action, not an inference, so it outranks every denial rule including D6.
-  if (!options.ignoreLinkedItems && areLinked(left, right)) {
-    return result("match", "exact", [{ rule: "Tier 0", detail: "Zotero linked items (owl:sameAs): one record was copied from the other." }], titleRelation, typeRelation);
-  }
 
   if (typeRelation === "incompatible") {
     return result("no-match", "none", [{ rule: "D6", detail: "Item types are incompatible." }], titleRelation, typeRelation);

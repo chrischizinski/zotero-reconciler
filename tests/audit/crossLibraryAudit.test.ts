@@ -25,8 +25,7 @@ describe("cross-library audit", () => {
     const audit = auditCrossLibraries([mine, found, missedByRules], 1);
     expect(audit.linkedPairs).toBe(1);
     expect(audit.linkedButUnmatched.map(({ right }) => right.ref.itemKey)).toEqual(["C"]);
-    // The link still counts as a match in the index: all three are one work.
-    expect(audit.works).toHaveLength(1);
-    expect(audit.works[0]?.items.map((i) => i.ref.itemKey).sort()).toEqual(["A", "B", "C"]);
+    // A linked pair the rules reject is REVIEW, so it must not be welded into the work (§8.1: review never auto-reconciles).
+    expect(audit.works.map((work) => work.items.map((i) => i.ref.itemKey).sort())).toEqual([["A", "B"], ["C"]]);
   });
 });

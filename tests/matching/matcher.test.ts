@@ -228,24 +228,41 @@ describe("rules learned from real-library validation (2026-09-17)", () => {
   });
 });
 
-describe("Tier 0 — Zotero linked items (§8.0)", () => {
+describe("Tier 0 — Zotero linked items (§8.0a)", () => {
   const group = (overrides: Partial<ScannedItem> & { fields?: ScannedItem["fields"] } = {}): ScannedItem =>
     item({ ref: { libraryID: 2, libraryName: "Group", itemKey: "BBBB2222", version: 1 }, ...overrides });
+  const linked = { linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] };
 
-  it("matches at EXACT when Zotero recorded that one record was copied from the other, even with no shared bibliographic evidence", () => {
-    // The user made this copy; the relation is an assertion, not an inference. Titles differ
-    // completely here so nothing else could have produced the match.
-    const copy = group({ fields: { title: "Completely different title", date: "1999" }, creators: [{ lastName: "Nobody" }], linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
+  it("lifts a rules match to EXACT and cites the link first; direction of the relation does not matter", () => {
+    // Title/creator/year agree (Tier 2 = HIGH on its own); Zotero's copy record makes it EXACT.
+    const copy = group(linked);
+    expect(matchItems(item(), group())).toMatchObject({ verdict: "match", tier: "high" });
     const result = matchItems(item(), copy);
     expect(result).toMatchObject({ verdict: "match", tier: "exact" });
     expect(result.evidence[0]).toMatchObject({ rule: "Tier 0" });
-    // Zotero writes the relation on the copy only; direction must not matter.
+    // Zotero writes the relation on the copy only.
     expect(matchItems(copy, item())).toMatchObject({ verdict: "match", tier: "exact" });
   });
 
-  it("outranks D6: a linked copy whose type was later changed is still the same record", () => {
-    const retyped = group({ itemType: "report", linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
-    expect(matchItems(item(), retyped)).toMatchObject({ verdict: "match", tier: "exact" });
+  it("never overrides a denial: identical titles but conflicting DOIs → REVIEW, not match (one DOI is probably wrong)", () => {
+    // Real data 2026-09-17: "Beyond water data…" linked, same title, DOIs differ.
+    const result = matchItems(item({ fields: { doi: "10.1/a" } }), group({ fields: { doi: "10.1/b" }, ...linked }));
+    expect(result).toMatchObject({ verdict: "review", tier: "review" });
+    expect(result.evidence.map(({ rule }) => rule)).toEqual(["Tier 0", "D1", "§8.0a"]);
+    expect(result.evidence[2]?.detail).toMatch(/wrong identifier or type/);
+  });
+
+  it("flags a stale link: titles diverged after copying → REVIEW that names the likely cause, never an automatic match", () => {
+    // Real data 2026-09-17: five of ten rule-rejected linked pairs had been repurposed into
+    // different papers after the copy. Clustering them would copy fields between unrelated works.
+    const repurposed = group({ fields: { title: "Public access for pheasant hunters: understanding an emerging need", date: "2024" }, ...linked });
+    const result = matchItems(item({ fields: { title: "Use and expenditures on public access hunting lands" } }), repurposed);
+    expect(result).toMatchObject({ verdict: "review", tier: "review" });
+    expect(result.evidence.at(-1)?.detail).toMatch(/probably stale/);
+  });
+
+  it("does not let a link outrank D6 either: a retyped copy is REVIEW", () => {
+    expect(matchItems(item(), group({ itemType: "report", ...linked }))).toMatchObject({ verdict: "review", tier: "review" });
     expect(matchItems(item(), group({ itemType: "report" }))).toMatchObject({ verdict: "no-match" });
   });
 
@@ -255,7 +272,14 @@ describe("Tier 0 — Zotero linked items (§8.0)", () => {
   });
 
   it("can be switched off so the bibliographic rules alone are audited against Zotero's links", () => {
-    const copy = group({ fields: { title: "Completely different title", date: "1999" }, linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
-    expect(matchItems(item(), copy, { ignoreLinkedItems: true })).toMatchObject({ verdict: "no-match" });
+    expect(matchItems(item({ fields: { doi: "10.1/a" } }), group({ fields: { doi: "10.1/b" }, ...linked }), { ignoreLinkedItems: true })).toMatchObject({ verdict: "no-match" });
+  });
+});
+
+describe("BibTeX brace stripping (real data 2026-09-17)", () => {
+  it("treats {D}iversity as Diversity rather than splitting it into two words", () => {
+    expect(normalizeItem(item({ fields: { title: "Readings for {D}iversity and {S}ocial {J}ustice" } })).normalizedTitle).toBe("readings for diversity and social justice");
+    expect(matchItems(item({ fields: { title: "Readings for {D}iversity and {S}ocial {J}ustice, 3rd ed", date: "2018" } }), item({ ref: { libraryID: 2, libraryName: "G", itemKey: "B", version: 1 }, fields: { title: "Readings for Diversity and Social Justice, 3rd Ed", date: "2018" } })))
+      .toMatchObject({ verdict: "match", titleRelation: "equivalent" });
   });
 });

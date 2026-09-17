@@ -182,9 +182,9 @@ export function renderAudit(audit: CrossLibraryAudit): string {
 function renderLinkedOracle(audit: CrossLibraryAudit): string {
   if (audit.linkedPairs === 0) return "Zotero linked items: none found (Zotero records these when you drag items between libraries).";
   const missed = audit.linkedButUnmatched;
-  const head = `Zotero linked items: ${audit.linkedPairs} pairs; ${missed.length} would not be matched by the bibliographic rules alone.`;
+  const head = `Zotero linked items: ${audit.linkedPairs} pairs; ${missed.length} need review because the bibliographic rules disagree with the link (a stale link after one record was repurposed, or a wrong identifier/type in one copy). These are not clustered.`;
   if (missed.length === 0) return head;
-  const rows = missed.slice(0, 10).map(({ left, right, result }) => `• ${left.fields.title || "Untitled"} (${left.ref.libraryName}) / ${right.fields.title || "Untitled"} (${right.ref.libraryName}): ${result.evidence.map(({ detail }) => detail).join(" ")}`);
+  const rows = missed.slice(0, 25).map(({ left, right, result }) => `• ${left.fields.title || "Untitled"} (${left.ref.libraryName}) / ${right.fields.title || "Untitled"} (${right.ref.libraryName}): ${result.evidence.map(({ detail }) => detail).join(" ")}`);
   return `${head}\nFirst ${rows.length}:\n${rows.join("\n")}`;
 }
 

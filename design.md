@@ -239,6 +239,10 @@ duplicate pairs Zotero misses for exactly this reason (2026-09-17).
 and `<sup>`. Strip tags before step 1, or a formatted title will never match its plain
 equivalent.
 
+**[DIVERGES]** BibTeX case-protection braces (`Readings for {D}iversity`) are deleted rather
+than treated as punctuation. Folding them to spaces splits `{D}iversity` into `d iversity`
+and the title never matches its plain form; seen on a real linked pair (2026-09-17).
+
 ## DOI
 
 Input:
@@ -434,22 +438,32 @@ Zotero already records cross-library equivalence. Every drag-and-drop of an item
 library runs `item.clone(targetLibraryID)` and then `newItem.addLinkedItem(item)`, which
 stores an `owl:sameAs` relation on the copy; `getLinkedItem()` reads it back so a second
 drag reuses the existing copy instead of creating another (`collectionTree.js`,
-Zotero 10.0.2). These relations are **user actions, not inferences**.
+Zotero 10.0.2).
+
+**What the relation proves.** A copy *event* — not that the two records still describe the
+same work. First live run (838 linked pairs in one account): the rules matched 817; of the
+21 they rejected, roughly half had been **repurposed** after copying — the user overwrote one
+copy with a different paper's metadata, leaving the link in place. The other half were the
+rules' own misses: a wrong DOI in one copy, a retyped copy, BibTeX braces in a title.
+
+Tier 0 therefore **corroborates but never overrides**:
 
 ```text
-Tier 0  Either record carries owl:sameAs → the other     → EXACT, evidence "Tier 0"
+Linked, rules say MATCH             → EXACT, "Tier 0" evidence first
+Linked, rules deny or find nothing  → REVIEW (never NO MATCH, never automatic match)
+   titles still agree                 "wrong identifier or type in one copy"
+   titles diverged                    "link probably stale — record repurposed after copying"
 ```
 
-Tier 0 is evaluated before every denial rule, **including D6**: a linked copy whose type the
-user later changed is still the record they copied. It is the only rule that outranks a
-denial, and it does so because the evidence is not bibliographic agreement but a recorded
-copy event. The relation is stored on the copy only, so the check is direction-agnostic.
+REVIEW rather than NO MATCH because a stale link is itself a defect worth showing: Zotero's
+own drag-copy consults `getLinkedItem` and will refuse to copy the original again, silently
+handing the user the wrong item.
 
 Two consequences:
 
-- **Oracle.** Every linked pair the Tier 1–3 rules would *not* match is a real matcher false
-  negative; the audit reports them (`linkedButUnmatched`) as a standing validation against
-  the user's own data. Expect a long tail here: users retitle or retype copies over time.
+- **Oracle.** The audit reports every linked pair the Tier 1–3 rules would not match
+  (`linkedButUnmatched`) as a standing validation against the user's own data; the rules'
+  genuine misses surface here and get fixed (the brace case was).
 - **Phase 3 obligation.** An import must write the same relation
   (`docs/phase3-write-safeguards.md` §2), so that Zotero's own drag logic and this plugin's
   next scan both recognise the copy.

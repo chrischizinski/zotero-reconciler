@@ -206,3 +206,16 @@ Still open from the review (not changed):
   to an existing regular item in a library the account holds. Expect linkedPairs ≈ that.
 - 69 tests. Built; dev Zotero restarted; audit NOT yet re-run live (needs GUI click).
   Persisted index predates Tier 0 — rerun audit to refresh.
+
+## 2026-09-17 Tier 0 live result → corroborate-only redesign
+
+- Live audit: 838 linked pairs; 21 rules-rejected. Of first 10: 5 STALE links (record
+  repurposed after copy → different paper), 1 edition pair, 4 genuine rule misses (wrong DOI
+  ×2, retyped ×1, BibTeX braces ×1). Tier 0-overrides-everything was a false-positive path.
+- Redesign: link corroborates, never overrides. rules match → EXACT (Tier 0 first in
+  evidence); rules deny/nothing → REVIEW with cause ("probably stale" if titles diverged,
+  "wrong identifier or type" if titles agree). REVIEW edges never enter clusters.
+- normalize: `{}` deleted before punctuation fold ([DIVERGES] recorded §7).
+- Report oracle section lists up to 25, explains stale-vs-wrong-identifier.
+- design.md §8.0a rewritten; CLAUDE.md tier row. 72 tests. Built; not re-run live yet.
+- Remaining 11 of 21 unseen — rerun audit in dev Zotero and read full list.

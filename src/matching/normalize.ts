@@ -14,6 +14,9 @@ const STOP_WORDS = new Set([
 export function normalizeText(value: string): string {
   return value
     .replace(/<[^>]*>/g, "")
+    // [DIVERGES from Zotero] BibTeX case-protection braces ("{D}iversity") are deleted, not
+    // treated as word breaks; seen on real imported records 2026-09-17.
+    .replace(/[{}]/g, "")
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
     .replace(/[ !-/:-@[-`{-~]+|[\p{P}\p{S}]+/gu, " ")
