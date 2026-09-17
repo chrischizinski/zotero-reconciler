@@ -168,3 +168,26 @@ Still open from the review (not changed):
 - **Known gap:** `libraryVersion` advances only on sync. Local unsynced edits and mid-session
   syncs are not detected until next startup. Options if it matters: Notifier 'item' modify
   → dirty flag; or `MAX(clientDateModified)` per library via `Zotero.DB` (read-only).
+
+## 2026-09-17 (afternoon) window hooks, manifest, same-library marker, Phase 3 design
+
+- `FindCopiesCommand.register(window)` / `unregister(window?)` track menu items per main
+  window (`Map<Window, Element[]>`); `bootstrap.js` forwards `onMainWindowLoad/Unload`;
+  startup registers into every `Zotero.getMainWindows()`. Column is ItemTreeManager-global,
+  untouched. Test pins: unregistering one window leaves the other's entries.
+- `manifest.json`: placeholder `update_url` removed.
+- `WorkLookup.copiesHere()` + column prefix `"N copies here"`. Only fires when a group copy
+  links two My Library items transitively — `crossLibraryAudit.ts` deliberately skips
+  same-library pairs (Zotero's Duplicate Items owns intra-library dupes). Documented.
+- `design.md` §8.4: the two type-policy decisions (preprint↔article DOI = match; thesis↔
+  article incompatible) flagged as one user's policy → future `matchingPolicy` preference,
+  defaults = today, index records policy, policy may never turn REVIEW into auto-match.
+- **Phase 3 design written: `docs/phase3-write-safeguards.md`.** Key findings from
+  Zotero 10.0.2 source (omni.ja): `UndoHistory` tracks only existing-object modifications
+  → native undo does NOT cover item creation; §27 and §42 Phase 3 corrected. Zotero's
+  drag-copy uses `item.clone(libraryID)` + `newItem.addLinkedItem(source)` (`owl:sameAs`);
+  Phase 3 must write that link, and linked items are a free Tier 0 match + matcher oracle.
+- 62 tests; tsc clean; build OK; dev Zotero starts and restores index. Not yet manually
+  verified: menu after Cmd+W/reopen; "copies here" cell on the 2016 national survey rows.
+- Uncommitted. Next: user answers decisions A–D in the Phase 3 doc §11 (D = build Tier 0
+  linked-item matching first — recommended yes).

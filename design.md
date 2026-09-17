@@ -678,6 +678,23 @@ the article). When external validation is enabled (§19), these relations resolv
 question authoritatively instead of heuristically, and should be preferred over any
 title/author inference.
 
+**These two decisions are one user's policy, not universal truth (noted 2026-09-17).** Another
+user may want a thesis and its derived article treated as one work, or may want a
+preprint↔article DOI match to stop at REVIEW. Both are candidates for a *matching policy*
+preference (§32 `preferences`):
+
+```text
+relatedTypesSharingIdentifier : "match" (default) | "review"
+thesisArticle                 : "incompatible" (default) | "review"
+```
+
+Constraints when this is built: defaults must reproduce today's behaviour; the persisted index
+records the policy it was built under and a policy change marks it stale (§29) so the column
+and reports never mix policies; policy can only *loosen toward REVIEW or tighten* — no setting
+may turn a REVIEW verdict into an automatic match. Deferred until a preferences pane exists
+(Phase 4, alongside reconciliation settings); the matcher already isolates both rules in
+`canonicalItemType` / D6 so the switch is local.
+
 ## 8.5 Blocking
 
 §30's funnel assumes identifier matching resolves ~87% of items, leaving a fuzzy candidate
@@ -1305,6 +1322,13 @@ This removes the main argument for deferring undo to a later phase: native undo 
 argument passed to a call the plugin already has to make, not a subsystem it has to build.
 Every write, from the first one shipped, should carry an `undoAction`.
 
+**Correction (2026-09-17, from Zotero 10.0.2 source).** `Zotero.UndoHistory` "only tracks
+modifications to existing objects": `DataObject.save()` stages a change only when the object
+is not new. Native undo therefore covers Phase 4 field edits but **not** Phase 3 item
+creation. Phase 3 session undo is plugin-owned — trash the items recorded in the transaction
+log (trashing *is* a tracked modification, so that step gets an `undoAction`). See
+`docs/phase3-write-safeguards.md` §2.1 and §7.
+
 The plugin's own transaction log (§26) remains necessary and is not made redundant by this.
 Native undo is a session-scoped stack that a user can exhaust, walk past, or lose on
 restart; the transaction log answers "which library supplied this value, three weeks ago"
@@ -1917,8 +1941,12 @@ Safeguards:
 Undo belongs here, not in Phase 4. This is the first phase that writes, and it writes at the
 largest scale the plugin ever operates at — a single confirmation can add hundreds of items.
 Shipping the highest-volume write before the ability to reverse it inverts the risk ordering
-that governs every other part of this design. Zotero 10's native undo (§27) makes the cost
-of doing this correctly close to zero.
+that governs every other part of this design. Native undo does **not** cover item creation
+(§27 correction), so the import collection + transaction log *are* the undo mechanism, not
+a convenience. Every import also records Zotero's own `owl:sameAs` linked-item relation so a
+later manual drag does not create a second copy.
+
+Architecture, invariants and open decisions: `docs/phase3-write-safeguards.md`.
 
 ---
 
