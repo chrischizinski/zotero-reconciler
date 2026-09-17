@@ -147,3 +147,14 @@ Still open from the review (not changed):
 - Report window gained **Copy All** (nsIClipboardHelper).
 - Confirmed live: 534 KB file, restore log line on restart, 0 stale.
 - Next: queued item 2, "Also in" item-tree column reading `FindCopiesCommand.workLookup`.
+
+## 2026-09-17 "Also in" column (queued item 2 — done)
+
+- `src/zotero/coverageColumn.ts`: `Zotero.ItemTreeManager.registerColumn` (main tree only,
+  `pluginID` = manifest id, persists width/hidden/sort). `dataProvider` reads
+  `FindCopiesCommand.workLookup`; `refreshColumns()` after audit/restore.
+- Zotero 10.0.2 logs two bogus `defaultIn`/`disableIn` deprecation warnings for every plugin
+  column — its `checkHook` runs on undefined optional keys. Not ours; ignore.
+- Confirmed live in dev profile: column populates from restored index at startup.
+- Remaining deferred: `onMainWindowLoad`; placeholder `update_url`; `edition` field; arXiv
+  version suffix; §29 incremental rescan (only if needed).

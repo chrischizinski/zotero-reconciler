@@ -34,7 +34,9 @@ export class FindCopiesCommand {
   constructor(
     private readonly zotero: ZoteroUI,
     private readonly store?: IndexStore,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    /** Invoked whenever `workLookup` changes (audit or restore) so dependents can repaint. */
+    private readonly onIndexChanged: () => void = () => undefined
   ) {}
 
   /** The last persisted index, if any; the audit command refreshes it. */
@@ -47,6 +49,7 @@ export class FindCopiesCommand {
     const snapshot = await this.store?.load();
     if (snapshot) {
       this.lookup = new WorkLookup(snapshot);
+      this.onIndexChanged();
       const stale = staleLibraries(snapshot, currentLibraryVersions(this.zotero));
       this.zotero.debug(`[Zotero Library Reconciler] Restored index of ${snapshot.works.length} works from ${snapshot.scannedAt}; ${stale.length} librar${stale.length === 1 ? "y has" : "ies have"} changed since.`);
     }
@@ -86,6 +89,7 @@ export class FindCopiesCommand {
       const { audit, libraries } = await auditLibraries(this.zotero);
       const snapshot = createSnapshot(audit, libraries, this.now());
       this.lookup = new WorkLookup(snapshot);
+      this.onIndexChanged();
       let persistence = "Index not persisted (no store configured).";
       if (this.store) {
         try {

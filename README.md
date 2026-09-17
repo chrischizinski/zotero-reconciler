@@ -71,7 +71,11 @@ Right-click an item in Zotero:
 - **Audit Cross-Library Coverage** — scans all libraries, clusters confirmed matches into
   works, and lists works absent from My Library plus matched pairs with metadata differences.
 
-Both commands are read-only.
+- **"Also in" column** — optional item-list column (right-click the column header) showing
+  which other libraries hold each item's work. Reads the index saved by the last audit;
+  restored at startup.
+
+All three are read-only.
 
 ## Installation
 

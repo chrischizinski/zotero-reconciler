@@ -1,3 +1,4 @@
+import { CoverageColumn, type ItemTreeManagerAPI } from "../zotero/coverageColumn.js";
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
 import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
 
@@ -8,11 +9,13 @@ declare const Zotero: {
   Libraries: unknown;
   Items: unknown;
   DataDirectory: { dir: string };
+  ItemTreeManager: ItemTreeManagerAPI;
 };
 declare const IOUtils: SnapshotFileSystem;
 declare const PathUtils: { join(...parts: string[]): string };
 
 let findCopiesCommand: FindCopiesCommand | undefined;
+let coverageColumn: CoverageColumn | undefined;
 
 type ReconcilerRuntime = {
   startup(): void;
@@ -30,15 +33,22 @@ function log(message: string): void {
 runtimeGlobal.ZoteroLibraryReconciler = {
   startup(): void {
     const store = IndexStore.inDataDirectory(IOUtils, Zotero.DataDirectory.dir, (...parts) => PathUtils.join(...parts));
-    findCopiesCommand = new FindCopiesCommand(
+    const command = new FindCopiesCommand(
       Zotero as ConstructorParameters<typeof FindCopiesCommand>[0],
       store,
+      () => new Date(),
+      () => coverageColumn?.refresh(),
     );
-    findCopiesCommand.register();
-    void findCopiesCommand.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
+    findCopiesCommand = command;
+    coverageColumn = new CoverageColumn(Zotero.ItemTreeManager, () => command.workLookup);
+    command.register();
+    coverageColumn.register();
+    void command.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
     log("Started read-only matching foundation.");
   },
   shutdown(): void {
+    coverageColumn?.unregister();
+    coverageColumn = undefined;
     findCopiesCommand?.unregister();
     findCopiesCommand = undefined;
     log("Stopped.");
