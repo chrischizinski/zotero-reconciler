@@ -355,6 +355,12 @@ Notes:
 - Single-field-mode creators (corporate authors such as `U.S. Fish and Wildlife Service`)
   have no first name. Zotero sets the initial to `false`/`""`; compare on the normalized
   full string only. Two corporate authors match only on exact normalized equality.
+  **[DIVERGES]** (2026-09-17) Before comparing, drop a parenthesised acronym and the
+  connectives `and / the / of / for / inc / llc / ltd / co`: real linked pairs held
+  `Southwick and Associates` / `Southwick Associates` and `Conservation Measures Partnership
+  (CMP)` / `Conservation Measures Partnership`. A bare acronym (`USFWS`) still does **not**
+  match its expansion. A two-field creator with no first name and a space in the surname is
+  treated as corporate for this purpose; single-word surnames are never altered.
 - **Both records have no creators → treat as compatible.** One has creators and the other
   has none → **not** compatible. (Both are Zotero's behaviour.)
 

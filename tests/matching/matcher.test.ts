@@ -283,3 +283,33 @@ describe("BibTeX brace stripping (real data 2026-09-17)", () => {
       .toMatchObject({ verdict: "match", titleRelation: "equivalent" });
   });
 });
+
+describe("corporate creators and versions (real linked pairs 2026-09-17)", () => {
+  const group = (overrides: Partial<ScannedItem> & { fields?: ScannedItem["fields"] } = {}): ScannedItem =>
+    item({ ref: { libraryID: 2, libraryName: "Group", itemKey: "BBBB2222", version: 1 }, ...overrides });
+  const report = { itemType: "report", fields: { title: "Economic impact of hunting, fishing, trapping, boating, and wildlife viewing in South Dakota", date: "2017" } };
+
+  it("treats spelling variants of one organisation as the same creator so a same-title, same-year report pair matches", () => {
+    const left = item({ ...report, creators: [{ lastName: "Southwick and Associates", fieldMode: 1 }] });
+    const right = group({ ...report, creators: [{ lastName: "Southwick Associates", fieldMode: 1 }] });
+    expect(matchItems(left, right)).toMatchObject({ verdict: "match", tier: "high" });
+    // A trailing acronym is noise too; and a two-field entry with no first name and spaces is still an organisation.
+    const cmp = item({ ...report, creators: [{ lastName: "Conservation Measures Partnership (CMP)", fieldMode: 1 }] });
+    const cmpPlain = group({ ...report, creators: [{ lastName: "Conservation Measures Partnership" }] });
+    expect(matchItems(cmp, cmpPlain)).toMatchObject({ verdict: "match", tier: "high" });
+  });
+
+  it("does not strip words from personal surnames", () => {
+    const vanDer = item({ creators: [{ lastName: "van der Berg", firstName: "A" }] });
+    const other = group({ creators: [{ lastName: "Berg", firstName: "A" }] });
+    expect(matchItems(vanDer, other)).toMatchObject({ verdict: "no-match" });
+  });
+
+  it("treats a version suffix like an edition: related works, manual review", () => {
+    const result = matchItems(
+      item({ itemType: "document", fields: { title: "Open standards for the practice of conservation", date: "2020" }, creators: [{ lastName: "Conservation Measures Partnership", fieldMode: 1 }] }),
+      group({ itemType: "document", fields: { title: "Open standards for the practice of conservation. Ver. 4.0", date: "2020" }, creators: [{ lastName: "Conservation Measures Partnership (CMP)", fieldMode: 1 }] })
+    );
+    expect(result).toMatchObject({ verdict: "review", tier: "review" });
+  });
+});

@@ -177,7 +177,8 @@ function properPrefix(shorter: readonly string[], longer: readonly string[]): bo
   return shorter.length >= 2 && shorter.length < longer.length && shorter.every((value, index) => value === longer[index]);
 }
 
-const EDITION_MARKER = /^(edition|ed|edn)$/;
+/** Editions and versions of a standard/manual are related works, not copies (§8.4). "ver"/"version" added from real data 2026-09-17. */
+const EDITION_MARKER = /^(edition|ed|edn|version|ver|v)$/;
 
 /** The words the longer title adds beyond the shared prefix. */
 function addedWords(left: readonly string[], right: readonly string[]): readonly string[] {

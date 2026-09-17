@@ -219,3 +219,16 @@ Still open from the review (not changed):
 - Report oracle section lists up to 25, explains stale-vs-wrong-identifier.
 - design.md §8.0a rewritten; CLAUDE.md tier row. 72 tests. Built; not re-run live yet.
 - Remaining 11 of 21 unseen — rerun audit in dev Zotero and read full list.
+
+## 2026-09-17 second live oracle run (20 review pairs) → two matcher fixes + one open policy
+
+- Live: 838 linked, 20 review, works 3208→3228 (stale pairs no longer welded), diffs 131→114.
+- DB inspection of the same-title review pairs found three patterns: (a) `document` vs
+  report/book (Zotero's generic type; D6 fires); (b) corporate creator spelling variants;
+  (c) data errors in one copy (year 1933/2023, IPBES SPM typed journalArticle, "Force").
+- Fixed (b): `normalizeCorporateName` drops "(ACRONYM)" + connectives for fieldMode-1 or
+  first-name-less multi-word creators; [DIVERGES] in §7. Acronym≠expansion still holds.
+- Fixed: EDITION_MARKER now includes version|ver|v ("Open standards … Ver. 4.0" → review).
+- OPEN policy (a): should `document` be a wildcard type compatible with any parent type?
+  3 real same-work pairs blocked by D6. Not implemented pending user decision.
+- 75 tests. Built, dev Zotero restarted; not re-run live.

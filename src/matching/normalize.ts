@@ -77,12 +77,24 @@ export function parseExtraIdentifiers(extra: string | undefined): Partial<Normal
   return values;
 }
 
+/**
+ * Words that vary between spellings of one organisation ("Southwick and Associates" /
+ * "Southwick Associates"). Real linked pairs 2026-09-17. Personal surnames never lose words.
+ */
+const CORPORATE_NOISE = /\b(and|the|of|for|inc|llc|ltd|co)\b/g;
+
 function creatorKey(creator: CreatorInput): string | undefined {
-  const lastName = normalizeText(creator.lastName);
+  const corporate = creator.fieldMode === 1 || (!creator.firstName && /\s/.test(creator.lastName.trim()));
+  const lastName = corporate ? normalizeCorporateName(creator.lastName) : normalizeText(creator.lastName);
   if (!lastName) return undefined;
-  if (creator.fieldMode === 1) return `corporate:${lastName}`;
+  if (corporate) return `corporate:${lastName}`;
   const firstInitial = normalizeText(creator.firstName ?? "").charAt(0);
   return `${lastName}:${firstInitial}`;
+}
+
+/** Drops a trailing acronym in parentheses and connective words, then folds like a title. */
+export function normalizeCorporateName(value: string): string {
+  return normalizeText(value.replace(/\([^)]*\)/g, " ")).replace(CORPORATE_NOISE, " ").replace(/\s+/g, " ").trim();
 }
 
 export function normalizeItem(item: ScannedItem): NormalizedItem {
