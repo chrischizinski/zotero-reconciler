@@ -113,18 +113,55 @@ describe("Find Copies command", () => {
       Items: { getAll: async (libraryID: number) => libraryID === 1 ? [mine] : [copy], loadDataTypes: async () => undefined }
     };
 
-    const first = new FindCopiesCommand(zotero, store, () => new Date("2026-09-17T12:00:00Z"));
+    const first = new FindCopiesCommand(zotero, { store, now: () => new Date("2026-09-17T12:00:00Z") });
     expect(await first.restoreIndex()).toBeUndefined();
     await first.runAudit();
     expect(dialogs[0]).toContain("Index of 1 works saved to /data/zotero-library-reconciler/index.json");
     expect(first.workLookup?.alsoIn(1, "AAAA1111")).toEqual(["Group"]);
 
-    const second = new FindCopiesCommand(zotero, store);
+    const second = new FindCopiesCommand(zotero, { store });
     const restored = await second.restoreIndex();
     expect(restored?.scannedAt).toBe("2026-09-17T12:00:00.000Z");
     expect(restored?.libraries).toEqual([{ libraryID: 1, name: "My Library", version: 10 }, { libraryID: 2, name: "Group", version: 3 }]);
     expect(second.workLookup?.alsoIn(2, "BBBB2222")).toEqual(["My Library"]);
     expect(debug.at(-1)).toContain("Restored index of 1 works");
     expect(debug.at(-1)).toContain("0 libraries have changed");
+  });
+
+  it("offers a rescan at startup when a library changed since the snapshot, and keeps the old index if declined", async () => {
+    const snapshot = { schemaVersion: 1 as const, scannedAt: "2026-09-01T08:00:00.000Z", libraries: [{ libraryID: 1, name: "My Library", version: 10 }, { libraryID: 2, name: "Group", version: 3 }], works: [] };
+    const files = new Map<string, unknown>([["/data/zotero-library-reconciler/index.json", snapshot]]);
+    const fs: SnapshotFileSystem = {
+      exists: async (path) => files.has(path), readJSON: async (path) => files.get(path),
+      writeJSON: async (path, value) => { files.set(path, JSON.parse(JSON.stringify(value))); }, makeDirectory: async () => undefined
+    };
+    const store = IndexStore.inDataDirectory(fs, "/data", (...parts) => parts.join("/"));
+    const prompts: string[] = [];
+    const dialogs: string[] = [];
+    let answer = false;
+    const zotero = {
+      debug: () => undefined,
+      getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
+      getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 4 }], userLibraryID: 1 },
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+    };
+    const options = { store, now: () => new Date("2026-09-17T12:00:00Z"), confirmRescan: (message: string) => { prompts.push(message); return answer; } };
+
+    await new FindCopiesCommand(zotero, options).restoreIndex();
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("2026-09-01 08:00:00 UTC");
+    expect(prompts[0]).toContain("this library has changed: Group");
+    expect(dialogs).toHaveLength(0);
+    expect((files.get(store.location) as { scannedAt: string }).scannedAt).toBe("2026-09-01T08:00:00.000Z");
+
+    answer = true;
+    await new FindCopiesCommand(zotero, options).restoreIndex();
+    expect(dialogs).toHaveLength(1);
+    expect((files.get(store.location) as { scannedAt: string }).scannedAt).toBe("2026-09-17T12:00:00.000Z");
+
+    prompts.length = 0;
+    await new FindCopiesCommand(zotero, options).restoreIndex();
+    expect(prompts).toHaveLength(0);
   });
 });

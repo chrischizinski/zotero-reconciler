@@ -26,33 +26,49 @@ interface ZoteroUI extends ZoteroReadAPI {
 const MENU_ID = "zotero-library-reconciler-find-copies";
 const AUDIT_MENU_ID = "zotero-library-reconciler-audit";
 
+export interface CommandOptions {
+  store?: IndexStore;
+  now?: () => Date;
+  /** Invoked whenever `workLookup` changes (audit or restore) so dependents can repaint. */
+  onIndexChanged?: () => void;
+  /** Asks the user whether to rescan a stale index; returns true to rescan. Absent → never prompts. */
+  confirmRescan?: (message: string) => boolean;
+}
+
 export class FindCopiesCommand {
   private menuItem: Element | undefined;
   private auditMenuItem: Element | undefined;
   private lookup: WorkLookup | undefined;
+  private readonly store: IndexStore | undefined;
+  private readonly now: () => Date;
+  private readonly onIndexChanged: () => void;
+  private readonly confirmRescan: ((message: string) => boolean) | undefined;
 
-  constructor(
-    private readonly zotero: ZoteroUI,
-    private readonly store?: IndexStore,
-    private readonly now: () => Date = () => new Date(),
-    /** Invoked whenever `workLookup` changes (audit or restore) so dependents can repaint. */
-    private readonly onIndexChanged: () => void = () => undefined
-  ) {}
+  constructor(private readonly zotero: ZoteroUI, options: CommandOptions = {}) {
+    this.store = options.store;
+    this.now = options.now ?? (() => new Date());
+    this.onIndexChanged = options.onIndexChanged ?? (() => undefined);
+    this.confirmRescan = options.confirmRescan;
+  }
 
   /** The last persisted index, if any; the audit command refreshes it. */
   get workLookup(): WorkLookup | undefined {
     return this.lookup;
   }
 
-  /** Loads the persisted index at startup so consumers (e.g. a coverage column) can answer immediately. */
+  /**
+   * Loads the persisted index at startup so consumers (e.g. a coverage column) can answer
+   * immediately, then offers a rescan if any library changed since the scan (§29). The old
+   * index stays in use until the rescan completes, so a "Later" answer costs nothing.
+   */
   async restoreIndex(): Promise<IndexSnapshot | undefined> {
     const snapshot = await this.store?.load();
-    if (snapshot) {
-      this.lookup = new WorkLookup(snapshot);
-      this.onIndexChanged();
-      const stale = staleLibraries(snapshot, currentLibraryVersions(this.zotero));
-      this.zotero.debug(`[Zotero Library Reconciler] Restored index of ${snapshot.works.length} works from ${snapshot.scannedAt}; ${stale.length} librar${stale.length === 1 ? "y has" : "ies have"} changed since.`);
-    }
+    if (!snapshot) return undefined;
+    this.lookup = new WorkLookup(snapshot);
+    this.onIndexChanged();
+    const stale = staleLibraries(snapshot, currentLibraryVersions(this.zotero));
+    this.zotero.debug(`[Zotero Library Reconciler] Restored index of ${snapshot.works.length} works from ${snapshot.scannedAt}; ${stale.length} librar${stale.length === 1 ? "y has" : "ies have"} changed since.`);
+    if (stale.length > 0 && this.confirmRescan?.(renderStalePrompt(snapshot, stale))) await this.runAudit();
     return snapshot;
   }
 
@@ -139,6 +155,12 @@ export class FindCopiesCommand {
       window.alert(message);
     }
   }
+}
+
+export function renderStalePrompt(snapshot: IndexSnapshot, stale: readonly { name: string }[]): string {
+  const when = snapshot.scannedAt.replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  const names = stale.map((library) => library.name).join(", ");
+  return `The cross-library index was built on ${when}. Since then ${stale.length === 1 ? "this library has" : "these libraries have"} changed: ${names}.\n\nRescan now? The scan is read-only and takes a few seconds. The "Also in" column keeps using the old index until you rescan.`;
 }
 
 export function renderAudit(audit: CrossLibraryAudit): string {

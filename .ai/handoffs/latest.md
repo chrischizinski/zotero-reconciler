@@ -158,3 +158,13 @@ Still open from the review (not changed):
 - Confirmed live in dev profile: column populates from restored index at startup.
 - Remaining deferred: `onMainWindowLoad`; placeholder `update_url`; `edition` field; arXiv
   version suffix; §29 incremental rescan (only if needed).
+
+## 2026-09-17 stale-index rescan prompt — done
+
+- `restoreIndex()` compares snapshot library versions to `Zotero.Library.libraryVersion`;
+  if any moved → `Services.prompt.confirmEx` "Rescan Now / Later". Old index stays in use
+  until rescan completes. `FindCopiesCommand` constructor now takes an options object.
+- Confirmed live by decrementing two versions in index.json → prompt → rescan → rewritten.
+- **Known gap:** `libraryVersion` advances only on sync. Local unsynced edits and mid-session
+  syncs are not detected until next startup. Options if it matters: Notifier 'item' modify
+  → dirty flag; or `MAX(clientDateModified)` per library via `Zotero.DB` (read-only).
