@@ -237,3 +237,19 @@ Still open from the review (not changed):
   data; 8 doc↔report/book. `canonicalTypeRank()` centralised in types.ts. 77 tests.
 - Live run 3: 17 review (9 stale links, 4 data errors, 4 policy-related). Zero matcher gaps.
   Recorded in docs/validation-2026-09-17.md addendum. Matcher validation vs Tier 0 oracle: done.
+
+## 2026-09-17 Phase 3 slice 1 — write engine core (no UI, no live path)
+
+- New `src/write/`: `writeApi.ts` (WriteAPI interface — the complete mutation surface),
+  `importPlan.ts`, `recallCheck.ts` (§48.1), `importExecutor.ts` (§25 WRITE + §40 batch
+  semantics), `transactionLog.ts` (JSONL entries, undo = trash created refs).
+- `src/zotero/transactionStore.ts` (append-only file), `src/zotero/writeAdapter.ts` (ONLY
+  mutating file; clone→setCollections→save→addLinkedItem in one executeTransaction;
+  `Items.trashTx` stages native undo). Verified API names in omni.ja. NOT live-tested.
+- Executor enforces target == userLibraryID: `_addLinkedObject` writes the relation on the
+  user-library side, so group targets would modify the source (doc §2.0).
+- recallCheck: similar-title requires a shared author (same-year alone flagged everything).
+- 93 tests; build unchanged (runtime imports none of this). Doc §10.1 status table.
+- Next (slice 2): import preview window (XHTML, per-row checkboxes + near-miss evidence),
+  "Add Selected to My Library" command on the missing-works list, session undo command,
+  gate behind pref `extensions.zotero-library-reconciler.enableImport` default false.

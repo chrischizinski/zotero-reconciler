@@ -42,6 +42,14 @@ mutation is *creation* of new items, and the only reversal is *trashing* those i
 | Reverse a creation | `Zotero.Items.trashTx(ids)` | Moves to Zotero trash (recoverable for the user's trash-retention window). Trashing an existing item is a modification, so it *is* natively undoable. |
 | Native undo (§27) | `save({ undoAction, undoActionArgs })` → `Zotero.UndoHistory.stageAction` | **Only for modifications of existing objects.** `DataObject.save()` calls `stageChange` only when `!env.isNew` (`dataObject.js`), and `undoHistory.js` states "Only tracks modifications to existing objects." |
 
+### 2.0 Where Zotero stores the link (verified `dataObject.js` `_addLinkedObject`)
+
+The `owl:sameAs` relation is written on **whichever side is the user library**: copying into
+My Library puts it on the new item (source untouched — invariant 3 holds); copying into a
+group would put it on the *source* My Library item. Phase 3 therefore imports **only into
+My Library**, enforced by the executor before any write. Group-library targets are a later
+phase with their own invariant 3.
+
 ### 2.1 Correction to `design.md` §27 / §42 Phase 3
 
 The spec says Zotero 10's native undo makes session undo for Phase 3 "close to zero" cost.
@@ -211,6 +219,20 @@ original (rewrite of that one line is acceptable; the file is small).
   profile's** My Library only, with metadata-only sync (already the dev setup), then
   confirm in the real client's Duplicate Items view that nothing new appears.
 
+## 10.1 Implementation status (2026-09-17, slice 1)
+
+| Module | State | Notes |
+|---|---|---|
+| `src/write/writeApi.ts` | done | `WriteAPI`: 7 methods, no `setField`/`erase` |
+| `src/write/importPlan.ts` | done | build / withDecisions / confirmPlan; defaults per §5 |
+| `src/write/recallCheck.ts` | done | shared-identifier → same-title → similar-title (needs shared author) → same-opening-words |
+| `src/write/importExecutor.ts` | done | invariants 2, 4, 5, 7, 9 tested against a recording fake |
+| `src/write/transactionLog.ts`, `src/zotero/transactionStore.ts` | done | JSONL, lenient read, `markUndone` |
+| `src/zotero/writeAdapter.ts` | written, **not wired, not live-tested** | the only mutating file |
+| import preview window, menu command, undo command, dev-only pref gate | not started | slice 2 |
+
+Nothing in `src/plugin/` imports the write engine; the built bundle contains no write path.
+
 ## 11. Decisions needed before coding
 
 | # | Question | Options | Consequence | Recommendation |
@@ -220,5 +242,4 @@ original (rewrite of that one line is acceptable; the file is small).
 | C | Import collection layout | (1) one flat `Reconciler Imports`; (2) parent + per-session subcollection | (2) makes "undo this session" and "what did I import last Tuesday" trivial | **(2)** |
 | D | Build Tier 0 (linked items) first? | (1) yes, as a Phase 2.5 read-only change; (2) fold into Phase 3 | (1) gives a free matcher oracle now and simplifies Phase 3 invariants | **(1)** |
 
-Items A–C have conventional defaults; if you say nothing I take the recommendations.
-D changes the order of work, so it needs a yes/no.
+Decided 2026-09-17: A (1), B (1) with preview checkbox, C (2), D yes — Tier 0 shipped first.
