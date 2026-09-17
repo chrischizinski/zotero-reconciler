@@ -48,7 +48,7 @@ describe("Zotero read adapter", () => {
     const attachment = zoteroItem({ libraryID: 2, isRegularItem: () => false });
     const result = await findCopies({
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Group", libraryType: "group" }] },
-      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy, attachment] : [source] }
+      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy, attachment] : [source], loadDataTypes: async () => undefined }
     }, source);
 
     expect(result).toMatchObject({ scannedLibraries: 1, scannedItems: 1 });
@@ -61,7 +61,7 @@ describe("Zotero read adapter", () => {
     const copy = zoteroItem({ libraryID: 2, fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
     const result = await findCopies({
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Waterfowl Group", libraryType: "group" }] },
-      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source] }
+      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source], loadDataTypes: async () => undefined }
     }, source);
     expect(renderResult(result)).toContain("Waterfowl Group — MATCH");
     expect(renderResult(result)).toContain("doi identical");
@@ -72,7 +72,7 @@ describe("Zotero read adapter", () => {
     const copy = zoteroItem({ libraryID: 2, fields: { title: "Waterfowl harvest", DOI: "10.1/example" }, getCreators: () => [{ lastName: "Jones", firstName: "Alex" }] });
     const result = await findCopies({
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Waterfowl Group", libraryType: "group" }] },
-      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source] }
+      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source], loadDataTypes: async () => undefined }
     }, source);
     expect(renderResult(result)).toContain("Differences: creators (Smith, Jane → Jones, Alex)");
   });
@@ -90,7 +90,7 @@ describe("Zotero read adapter", () => {
         ],
         userLibraryID: 1
       },
-      Items: { getAll: async (libraryID: number) => libraryID === 3 ? [feedCopy, feedOnly] : libraryID === 1 ? [source] : [] }
+      Items: { getAll: async (libraryID: number) => libraryID === 3 ? [feedCopy, feedOnly] : libraryID === 1 ? [source] : [], loadDataTypes: async () => undefined }
     };
 
     const copies = await findCopies(api, source);
@@ -99,5 +99,37 @@ describe("Zotero read adapter", () => {
     const audit = await auditLibraries(api);
     expect(audit.works.map((work) => work.items.map((item) => item.ref.itemKey))).toEqual([["AAAA1111"]]);
     expect(audit.missingFromMyLibrary).toHaveLength(0);
+  });
+
+  it("loads field and creator data before reading any candidate: getAll() returns unloaded shells", async () => {
+    const shells = new Map<string, { item: ZoteroItem; loaded: boolean }>();
+    const shell = (libraryID: number, key: string, loaded: boolean): ZoteroItem => {
+      const state = { loaded };
+      const item: ZoteroItem = {
+        libraryID, key, version: 1, itemType: "journalArticle",
+        isRegularItem: () => true,
+        getField: (field) => { if (!state.loaded) throw new Error(`UnloadedDataException: field '${field}' not set`); return field === "DOI" ? "10.1/example" : field === "title" ? "Waterfowl harvest" : ""; },
+        getCreators: () => { if (!state.loaded) throw new Error("UnloadedDataException"); return [{ lastName: "Smith", firstName: "Jane" }]; }
+      };
+      shells.set(key, { item, loaded: state.loaded });
+      Object.defineProperty(state, "loaded", { get: () => shells.get(key)!.loaded, set: (value: boolean) => { shells.get(key)!.loaded = value; } });
+      return item;
+    };
+    const source = shell(1, "AAAA1111", true); // the selected item is already loaded by the UI
+    const api = {
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Group", libraryType: "group" }], userLibraryID: 1 },
+      Items: {
+        getAll: async (libraryID: number) => [libraryID === 1 ? source : shell(2, "BBBB2222", false)],
+        loadDataTypes: async (items: ZoteroItem[], dataTypes: string[]) => {
+          expect(dataTypes).toEqual(["itemData", "creators"]);
+          for (const item of items) shells.get(item.key)!.loaded = true;
+        }
+      }
+    };
+    const result = await findCopies(api, source);
+    expect(result.copies).toHaveLength(1);
+    shells.get("BBBB2222")!.loaded = false;
+    const audit = await auditLibraries(api);
+    expect(audit.confirmedPairs).toHaveLength(1);
   });
 });

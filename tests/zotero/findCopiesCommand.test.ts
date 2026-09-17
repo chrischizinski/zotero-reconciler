@@ -57,7 +57,7 @@ describe("Find Copies command", () => {
       getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
       getMainWindow: () => ({ document: harness.document } as unknown as Window),
       Libraries: { getAll: () => [] },
-      Items: { getAll: async () => [] }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     });
 
     command.register();
@@ -73,16 +73,21 @@ describe("Find Copies command", () => {
 
   it("shows an explicit selection instruction instead of scanning an ambiguous selection", async () => {
     const harness = menuHarness();
-    const alerts: string[] = [];
+    const dialogs: { url: string; args: { title: string; text: string } }[] = [];
     const command = new FindCopiesCommand({
       debug: () => undefined,
       getActiveZoteroPane: () => ({ getSelectedItems: () => [selectedItem(), selectedItem()] }),
-      getMainWindow: () => ({ document: harness.document, alert: (message: string) => alerts.push(message) } as unknown as Window),
+      getMainWindow: () => ({
+        document: harness.document,
+        openDialog: (url: string, _name: string, _features: string, args: { title: string; text: string }) => dialogs.push({ url, args })
+      } as unknown as Window),
       Libraries: { getAll: () => [] },
-      Items: { getAll: async () => [] }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     });
 
     await command.run();
-    expect(alerts).toEqual(["Select one bibliographic item, then choose Find Copies in Other Libraries."]);
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]?.url).toBe("chrome://zotero-library-reconciler/content/report.xhtml");
+    expect(dialogs[0]?.args.text).toBe("Select one bibliographic item, then choose Find Copies in Other Libraries.");
   });
 });

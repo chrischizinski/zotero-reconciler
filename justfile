@@ -13,10 +13,10 @@ build:
 
 package:
     just build
-    cd dist && zip -rFS zotero-library-reconciler.xpi bootstrap.js manifest.json chrome.manifest chrome/content/runtime.js
+    cd dist && zip -rFS zotero-library-reconciler.xpi bootstrap.js manifest.json chrome.manifest chrome/content/runtime.js chrome/content/report.xhtml
 
 test:
     npm test
 
 link-dev profile:
-    ./scripts/link-dev-plugin.zsh {{profile}}
+    ./scripts/link-dev-plugin.zsh "{{profile}}"

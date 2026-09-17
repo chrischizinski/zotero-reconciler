@@ -125,3 +125,11 @@ Still open from the review (not changed):
 - Decided 2026-09-17: `thesis` ↔ `journalArticle` stays incompatible (D6) — different works.
 - Still outstanding: UI run in disposable profile; adapter field shapes against real
   `Zotero.Item`; `onMainWindowLoad`; placeholder `update_url`; `alert()` output.
+
+## Queued (user-approved 2026-09-17)
+
+1. Persist the Scholarly Work index in plugin storage (§32) — prerequisite for 2.
+2. Read-only **"Also in"** item-tree column (`Zotero.ItemTreeManager.registerColumn`) showing
+   the other libraries holding each work. Chosen over writing `reconciler:in:<lib>` tags:
+   tags are a write path (§25 gates), sync to collaborators, and go stale. Tag writer may
+   come later as opt-in, My-Library-only, namespaced, one-click removable.

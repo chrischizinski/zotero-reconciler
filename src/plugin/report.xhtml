@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!-- Read-only report window. Receives { title, text } via window.arguments[0]. -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Zotero Library Reconciler"
+        width="760" height="600"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <script><![CDATA[
+    function init() {
+      const args = window.arguments && window.arguments[0];
+      if (!args) return;
+      if (args.title) document.title = args.title;
+      document.getElementById("report").value = args.text || "";
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 12px; gap: 8px;">
+    <html:textarea id="report" readonly="readonly" flex="1"
+      style="flex: 1; width: 100%; box-sizing: border-box; resize: none; font: 13px -apple-system, system-ui, sans-serif; white-space: pre-wrap; padding: 8px;"/>
+    <hbox pack="end">
+      <button label="Close" oncommand="window.close()"/>
+    </hbox>
+  </vbox>
+</window>

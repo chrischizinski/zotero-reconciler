@@ -35,7 +35,20 @@ export function isBibliographicLibrary(library: ZoteroLibrary): boolean {
 
 export interface ZoteroReadAPI {
   Libraries: { getAll(): ZoteroLibrary[]; userLibraryID?: number };
-  Items: { getAll(libraryID: number, onlyTopLevel: boolean, includeDeleted: boolean): Promise<ZoteroItem[]> };
+  Items: {
+    getAll(libraryID: number, onlyTopLevel: boolean, includeDeleted: boolean): Promise<ZoteroItem[]>;
+    /** Bulk-loads field and creator rows; `getAll()` returns shells and `getField()` throws until loaded. */
+    loadDataTypes(items: ZoteroItem[], dataTypes: string[]): Promise<void>;
+  };
+}
+
+/** The data types `toScannedItem` reads. Loaded per library in one query each, skipping already-loaded items. */
+const SCAN_DATA_TYPES = ["itemData", "creators"];
+
+async function loadedRegularItems(api: ZoteroReadAPI, libraryID: number): Promise<ZoteroItem[]> {
+  const items = (await api.Items.getAll(libraryID, true, false)).filter(isEligibleItem);
+  await api.Items.loadDataTypes(items, SCAN_DATA_TYPES);
+  return items;
 }
 
 export async function auditLibraries(api: ZoteroReadAPI): Promise<CrossLibraryAudit> {
@@ -44,11 +57,9 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<CrossLibraryAu
   if (myLibraryID === undefined) throw new Error("Zotero did not provide the My Library identifier.");
   const libraryItems = await Promise.all(libraries.map(async (library) => ({
     library,
-    items: await api.Items.getAll(library.libraryID, true, false)
+    items: await loadedRegularItems(api, library.libraryID)
   })));
-  const items = libraryItems.flatMap(({ library, items }) => items
-    .filter(isEligibleItem)
-    .map((item) => toScannedItem(item, library.name)));
+  const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name)));
   return auditCrossLibraries(items, myLibraryID);
 }
 
@@ -101,12 +112,11 @@ export async function findCopies(api: ZoteroReadAPI, sourceItem: ZoteroItem): Pr
   const candidateLibraries = libraries.filter((library) => library.libraryID !== sourceItem.libraryID);
   const libraryItems = await Promise.all(candidateLibraries.map(async (library) => ({
     library,
-    items: await api.Items.getAll(library.libraryID, true, false)
+    items: await loadedRegularItems(api, library.libraryID)
   })));
 
   const normalizedSource = normalizeItem(source);
   const blockedCandidates = libraryItems.flatMap(({ library, items }) => items
-    .filter(isEligibleItem)
     .map((item) => normalizeItem(toScannedItem(item, library.name)))
     .filter((candidate) => isCandidatePair(normalizedSource, candidate)));
   const copies = blockedCandidates

@@ -72,9 +72,19 @@ Library. 114 matched pairs with field-level differences, dominated by creator na
 All 5 RELATED pairs are `conferencePaper` ↔ `journalArticle` with identical titles. All 5
 review candidates are real ambiguities (`dcience` typo; four edition pairs).
 
-## Not validated here
+## In-Zotero confirmation (same day)
 
-- The plugin UI in Zotero (menu registration, alert rendering). Still needs a run in a
-  disposable profile.
-- Adapter field access (`getField("date", true, true)`, `getCreators()` shape) — the
-  harness read the local API's JSON, not `Zotero.Item` objects.
+Run in a disposable profile (`reconciler-dev`, isolated data directory, metadata-only sync
+of the same eight libraries). Both item-menu commands worked; the audit reported the same
+3,487 / 3,229 / 564 / 114 as the offline harness, so the live `Zotero.Item` adapter path is
+equivalent to the API-JSON path.
+
+Two defects found only by contact with real `Zotero.Item` objects, both fixed:
+
+- `Zotero.Items.getAll()` returns unloaded shells; `getField()` throws
+  `UnloadedDataException` until `Zotero.Items.loadDataTypes(items, ["itemData", "creators"])`.
+- Zotero 7+ ignores `chrome.manifest` for bootstrapped plugins; chrome URLs must be
+  registered from `bootstrap.js` via `amIAddonManagerStartup.registerChrome`.
+
+`alert()` was replaced by a resizable report window (`chrome/content/report.xhtml`) — a
+library-sized audit does not fit a modal alert.

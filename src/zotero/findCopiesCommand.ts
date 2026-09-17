@@ -10,6 +10,11 @@ interface XULDocument extends Document {
   createXULElement(name: string): Element;
 }
 
+/** Gecko's chrome-privileged window; `openDialog` is not in the DOM lib. */
+interface ChromeWindow extends Window {
+  openDialog(url: string, name: string, features: string, ...args: unknown[]): Window;
+}
+
 interface ZoteroUI extends ZoteroReadAPI {
   debug(message: string): void;
   getActiveZoteroPane(): ZoteroPane;
@@ -55,7 +60,7 @@ export class FindCopiesCommand {
 
   async runAudit(): Promise<void> {
     try {
-      this.show(renderAudit(await auditLibraries(this.zotero)));
+      this.show(renderAudit(await auditLibraries(this.zotero)), "Cross-Library Audit");
     } catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Audit failed: ${String(error)}`);
       this.show("Cross-library audit could not complete. See Zotero's debug output for details.");
@@ -71,7 +76,7 @@ export class FindCopiesCommand {
 
     try {
       const result = await findCopies(this.zotero, selected[0]);
-      this.show(renderResult(result));
+      this.show(renderResult(result), "Find Copies");
     }
     catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Find Copies failed: ${String(error)}`);
@@ -79,8 +84,20 @@ export class FindCopiesCommand {
     }
   }
 
-  private show(message: string): void {
-    this.zotero.getMainWindow().alert(message);
+  /** Resizable, scrollable, non-modal report window; `alert()` cannot show a library-sized report. */
+  private show(message: string, title = "Zotero Library Reconciler"): void {
+    const window = this.zotero.getMainWindow() as ChromeWindow;
+    try {
+      window.openDialog(
+        "chrome://zotero-library-reconciler/content/report.xhtml",
+        "",
+        "chrome,dialog=no,centerscreen,resizable",
+        { title, text: message }
+      );
+    } catch (error) {
+      this.zotero.debug(`[Zotero Library Reconciler] Report window failed, falling back to alert: ${String(error)}`);
+      window.alert(message);
+    }
   }
 }
 
