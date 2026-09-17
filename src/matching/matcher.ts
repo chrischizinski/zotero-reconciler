@@ -43,6 +43,10 @@ export function matchNormalizedItems(left: NormalizedItem, right: NormalizedItem
     return result("no-match", "none", [{ rule: "Tier 4", detail: "Related item types without same-work evidence." }], titleRelation, typeRelation);
   }
 
+  if (titleRelation === "addition-only" && addedWords(left.titleWords, right.titleWords).some((word) => EDITION_MARKER.test(word))) {
+    return result("review", "review", [{ rule: "§8.4", detail: "Titles differ only by an edition marker; editions are related works, not copies. Manual review required." }], titleRelation, typeRelation);
+  }
+
   if (titleRelation === "equivalent" || titleRelation === "addition-only") {
     if (creatorsCompatible(left, right) && yearsCompatible(left, right)) {
       return result("match", "high", [
@@ -67,8 +71,13 @@ function result(verdict: MatchResult["verdict"], tier: MatchResult["tier"], evid
   return { verdict, tier, evidence, titleRelation, typeRelation };
 }
 
+/**
+ * An ISBN identifies a book, not a chapter: every bookSection of an edited volume carries the
+ * same ISBN. Like Zotero's duplicate detector, ISBN is therefore identity only for `book` items.
+ */
 function matchingIdentifiers(left: NormalizedItem, right: NormalizedItem): string[] {
-  const keys: (keyof NormalizedItem["identifiers"])[] = ["doi", "isbn13", "pmid", "pmcid", "arxiv"];
+  const keys: (keyof NormalizedItem["identifiers"])[] = ["doi", "pmid", "pmcid", "arxiv"];
+  if (left.itemType.toLowerCase() === "book" && right.itemType.toLowerCase() === "book") keys.push("isbn13");
   return keys.filter((key) => left.identifiers[key] && left.identifiers[key] === right.identifiers[key]);
 }
 
@@ -89,10 +98,16 @@ function different(left: string | undefined, right: string | undefined): boolean
   return left !== undefined && right !== undefined && left !== right;
 }
 
+/**
+ * §8.3 with one tightening learned from real libraries: ADDITION-ONLY means the shorter title is
+ * an ordered *prefix* of the longer one (title + subtitle, series suffix), not any word subset.
+ * "The common carp" is a subset of "Using boat electrofishing … invasive common carp" but not
+ * the same work.
+ */
 function compareTitles(left: NormalizedItem, right: NormalizedItem): TitleRelation {
   if (!left.normalizedTitle || !right.normalizedTitle) return "missing";
   if (sameMembers(left.titleWords, right.titleWords)) return "equivalent";
-  if (properSubset(left.titleWords, right.titleWords) || properSubset(right.titleWords, left.titleWords)) return "addition-only";
+  if (properPrefix(left.titleWords, right.titleWords) || properPrefix(right.titleWords, left.titleWords)) return "addition-only";
   return "substitution";
 }
 
@@ -120,11 +135,22 @@ function yearsCompatible(left: NormalizedItem, right: NormalizedItem): boolean {
 }
 
 function sameMembers(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((value, index) => value === sortedRight[index]);
 }
 
-function properSubset(left: readonly string[], right: readonly string[]): boolean {
-  return left.length < right.length && left.every((value) => right.includes(value));
+/** One content word ("Introduction", "Discussion") is not enough title to be a prefix of anything. */
+function properPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
+  return shorter.length >= 2 && shorter.length < longer.length && shorter.every((value, index) => value === longer[index]);
+}
+
+const EDITION_MARKER = /^(edition|ed|edn)$/;
+
+/** The words the longer title adds beyond the shared prefix. */
+function addedWords(left: readonly string[], right: readonly string[]): readonly string[] {
+  return left.length > right.length ? left.slice(right.length) : right.slice(left.length);
 }
 
 function likelyTypo(left: readonly string[], right: readonly string[]): boolean {

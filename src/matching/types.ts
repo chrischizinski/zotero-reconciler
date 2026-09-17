@@ -43,6 +43,7 @@ export type MatchTier = "exact" | "high" | "review" | "none";
 
 export interface NormalizedItem extends ScannedItem {
   normalizedTitle: string;
+  /** Content words in title order (function words removed). Order matters for ADDITION-ONLY. */
   titleWords: readonly string[];
   creatorKeys: readonly string[];
   year?: number;

@@ -6,13 +6,17 @@ const STOP_WORDS = new Set([
   "a", "an", "the", "of", "on", "in", "for", "and", "or", "to", "with", "from", "at", "by", "as"
 ]);
 
-/** Mirrors Zotero's punctuation/diacritic behavior, after removing title markup. */
+/**
+ * Mirrors Zotero's punctuation/diacritic behavior, after removing title markup.
+ * [DIVERGES] Unicode punctuation and symbols (curly quotes, en/em dashes) are folded to a
+ * space as well; Zotero folds ASCII only, so `citizens’` and `citizens'` never agree there.
+ */
 export function normalizeText(value: string): string {
   return value
     .replace(/<[^>]*>/g, "")
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
-    .replace(/[ !-/:-@[-`{-~]+/g, " ")
+    .replace(/[ !-/:-@[-`{-~]+|[\p{P}\p{S}]+/gu, " ")
     .trim()
     .toLowerCase();
 }
@@ -93,7 +97,7 @@ export function normalizeItem(item: ScannedItem): NormalizedItem {
   const normalized: NormalizedItem = {
     ...item,
     normalizedTitle: title,
-    titleWords: [...new Set(title.split(" ").filter((word) => word && !STOP_WORDS.has(word)))].sort(),
+    titleWords: title.split(" ").filter((word) => word && !STOP_WORDS.has(word)),
     creatorKeys,
     identifiers: {
       ...(extra.doi ? { doi: extra.doi } : {}),

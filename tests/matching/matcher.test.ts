@@ -168,9 +168,62 @@ describe("matching regression fixtures (§46)", () => {
     expect(result.evidence[0]).toMatchObject({ rule: "D6" });
   });
 
+  it("keeps a thesis and the journal article derived from it apart, even with identical title, author, and year (D6, decision 2026-09-17)", () => {
+    const result = matchItems(item({ itemType: "thesis", fields: { date: "2014" } }), item({ itemType: "journalArticle", fields: { date: "2015" } }));
+    expect(result).toMatchObject({ verdict: "no-match", typeRelation: "incompatible" });
+    expect(result.evidence[0]).toMatchObject({ rule: "D6" });
+  });
+
   it("routes a one-character title typo to manual review (Tier 3)", () => {
     const result = matchItems(item({ fields: { title: "Waterfowl harvest management" } }), item({ fields: { title: "WaterfowI harvest management" } }));
     expect(result).toMatchObject({ verdict: "review", tier: "review" });
     expect(result.evidence[0]).toMatchObject({ rule: "Tier 3" });
+  });
+
+});
+
+describe("rules learned from real-library validation (2026-09-17)", () => {
+  it("does not treat a shared ISBN as identity for book sections: chapters of one volume share it", () => {
+    const result = matchItems(
+      item({ itemType: "bookSection", fields: { title: "Co-management in Alaska", date: "2023", isbn: "978-1-4214-4657-8" } }),
+      item({ itemType: "bookSection", fields: { title: "Research with tribes", date: "2023", isbn: "978-1-4214-4657-8" } })
+    );
+    expect(result).toMatchObject({ verdict: "no-match", tier: "none" });
+    expect(result.evidence[0]).toMatchObject({ rule: "D7" });
+  });
+
+  it("still denies book sections whose ISBNs differ (D2) and matches books whose ISBNs agree (Tier 1)", () => {
+    const denied = matchItems(item({ itemType: "bookSection", fields: { isbn: "0-306-40615-2" } }), item({ itemType: "bookSection", fields: { isbn: "978-1-4214-4657-8" } }));
+    expect(denied.evidence[0]).toMatchObject({ rule: "D2" });
+    expect(matchItems(item({ itemType: "book", fields: { isbn: "0-306-40615-2" } }), item({ itemType: "book", fields: { title: "Other", isbn: "978-0-306-40615-7" } }))).toMatchObject({ tier: "exact" });
+  });
+
+  it("requires ADDITION-ONLY to be an ordered prefix, not a word subset", () => {
+    const subset = matchItems(
+      item({ fields: { title: "The common carp", date: "2011" } }),
+      item({ fields: { title: "Using boat electrofishing to estimate the abundance of invasive common carp", date: "2012" } })
+    );
+    expect(subset).toMatchObject({ verdict: "no-match", titleRelation: "substitution" });
+    expect(subset.evidence[0]).toMatchObject({ rule: "D7" });
+    expect(matchItems(item({ fields: { title: "Governing the commons" } }), item({ fields: { title: "Governing the commons: the evolution of institutions for collective action" } })))
+      .toMatchObject({ verdict: "match", titleRelation: "addition-only" });
+  });
+
+  it("does not let a one-word title be a prefix of anything", () => {
+    const result = matchItems(item({ itemType: "bookSection", fields: { title: "Introduction" } }), item({ itemType: "bookSection", fields: { title: "An introduction to Indian reserved water rights" } }));
+    expect(result).toMatchObject({ verdict: "no-match", titleRelation: "substitution" });
+  });
+
+  it("routes an edition marker in the added words to review, because editions are related works (§8.4)", () => {
+    const result = matchItems(item({ itemType: "book", fields: { title: "Human dimensions of wildlife management", date: "2012" } }), item({ itemType: "book", fields: { title: "Human dimensions of wildlife management, second edition", date: "2012" } }));
+    expect(result).toMatchObject({ verdict: "review", tier: "review", titleRelation: "addition-only" });
+    expect(result.evidence[0]).toMatchObject({ rule: "§8.4" });
+  });
+
+  it("folds typographic quotes and dashes so they do not become title substitutions ([DIVERGES] from Zotero)", () => {
+    expect(matchItems(item({ fields: { title: "Deer hunting on Pennsylvania’s public and private lands" } }), item({ fields: { title: "Deer hunting on Pennsylvania's public and private lands" } })))
+      .toMatchObject({ verdict: "match", tier: "high", titleRelation: "equivalent" });
+    expect(matchItems(item({ fields: { title: "The role of cognitions in human–coyote interactions" } }), item({ fields: { title: "The role of cognitions in human-coyote interactions" } })))
+      .toMatchObject({ verdict: "match", tier: "high", titleRelation: "equivalent" });
   });
 });

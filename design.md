@@ -229,6 +229,12 @@ Apply to titles and creator names before any comparison:
 This is byte-for-byte Zotero's `normalizeString()`. It makes `Long-term` and `Long term`
 identical, and `Mallards.` and `mallards` identical, without removing meaningful words.
 
+**[DIVERGES]** Zotero folds ASCII punctuation only. Typographic apostrophes, quotation marks
+and en/em dashes (`Pennsylvania’s`, `human–coyote`) survive its normalization, so the same
+title pasted from two sources never agrees. Fold all Unicode punctuation and symbols
+(`\p{P}`, `\p{S}`) to a space as well. Validation against a 2,677-item library found 19
+duplicate pairs Zotero misses for exactly this reason (2026-09-17).
+
 **[DIVERGES]** Zotero does not strip HTML markup. Zotero titles may contain `<i>`, `<sub>`,
 and `<sup>`. Strip tags before step 1, or a formatted title will never match its plain
 equivalent.
@@ -434,8 +440,13 @@ Examples:
 DOI exact match
 PMID exact match
 arXiv ID exact match
-ISBN + compatible item type
+ISBN, both items of type book
 ```
+
+An ISBN identifies a *volume*. Every `bookSection` of an edited book carries the same ISBN,
+so ISBN is identity only when both records are `book` — Zotero's own rule. Validation
+(2026-09-17): 21 chapters of one volume produced 210 false Tier 1 matches before this
+restriction. ISBN still participates in D2 and in blocking for any item type.
 
 Example:
 
@@ -584,12 +595,21 @@ A = content words of title A
 B = content words of title B
 
 A == B                    → EQUIVALENT
-A ⊂ B  or  B ⊂ A          → ADDITION-ONLY  (subtitle, series suffix, edition marker)
-                            Treat as equivalent for MATCHING;
-                            record the difference as a reconcilable field difference.
+A is an ordered prefix    → ADDITION-ONLY  (subtitle, series suffix)
+  of B, or B of A, and      Treat as equivalent for MATCHING;
+  the prefix has ≥ 2 words  record the difference as a reconcilable field difference.
+  … unless the added words  → REVIEW. Editions are related works (§8.4), not copies.
+  contain an edition marker
 otherwise (SUBSTITUTION)  → NO AUTOMATIC MATCH. Route to review with the
                             disagreeing words shown as evidence.
 ```
+
+**Prefix, not subset.** An earlier draft defined ADDITION-ONLY as any word subset. Real
+libraries broke it immediately: `The common carp` ⊂ `Using boat electrofishing to estimate
+the abundance of invasive common carp` (same author, adjacent years) and `Introduction` ⊂
+every chapter title starting with that word. Title + subtitle is an *ordered* relation; a
+subset test admits any short title as a hub that welds a whole author-year block into one
+cluster. The two-word minimum blocks one-word chapter titles.
 
 Verified against the fixtures:
 
@@ -601,6 +621,9 @@ Verified against the fixtures:
 | `Harvest of mallards` ↔ `Harvest of Mallards.` | EQUIVALENT | ✓ matched |
 | `A Review of X` ↔ `Review of X` | EQUIVALENT | ✓ matched |
 | title ↔ title + subtitle | ADDITION-ONLY | ✓ matched, difference flagged |
+| `The common carp` ↔ `Using boat electrofishing … common carp` | SUBSTITUTION (not a prefix) | ✓ blocked |
+| `Introduction` ↔ `An introduction to …` | SUBSTITUTION (one-word prefix) | ✓ blocked |
+| `X` ↔ `X, second edition` | ADDITION-ONLY + edition marker | ✓ review |
 | `annual report 2019` ↔ `annual report 2020` | SUBSTITUTION `[2019] ↔ [2020]` | ✓ blocked |
 
 The last row is the case scalar similarity most reliably gets wrong: two different annual
@@ -629,6 +652,9 @@ book ↔ book, different edition field         → RELATED, never an automatic m
 report ↔ journalArticle                      → NOT compatible
 dataset ↔ journalArticle                     → NOT compatible  (§47: shared titles)
 thesis ↔ book                                → RELATED, never an automatic match
+thesis ↔ journalArticle                      → NOT compatible  (decision 2026-09-17: a thesis
+                                               and the article derived from it are different
+                                               works, even with identical title/author/year)
 anything ↔ attachment / note / annotation    → excluded from matching entirely  (§6)
 ```
 
@@ -1840,6 +1866,10 @@ A user can answer, for any single item:
 Do not start Phase 2 until the matcher has been run against real libraries and its
 disagreements with Zotero's own Duplicate Items view have each been explained. An
 unexplained disagreement is a bug in one of the two, and it is cheaper to find it here.
+
+**Met 2026-09-17** — see `docs/validation-2026-09-17.md`. A faithful port of
+`duplicates.js` was run beside the matcher on 4,149 items across eight libraries; every
+disagreement is accounted for by a documented `[DIVERGES]` rule or a fixed defect.
 
 ---
 

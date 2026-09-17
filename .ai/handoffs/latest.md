@@ -115,3 +115,13 @@ Still open from the review (not changed):
 - `manifest.json` placeholder `update_url`.
 - `edition` field not scanned; arXiv version suffix not stripped; `alert()` output.
 - Phase 1 exit gate (real-library validation vs. Duplicate Items view) still not done.
+
+## 2026-09-17 real-library validation (Phase 1 exit gate — met)
+
+- Pulled 4,149 items via local API into scratch; ported `duplicates.js` as oracle; diffed.
+  Record: `docs/validation-2026-09-17.md`. Harness in session scratchpad, not committed.
+- Matcher fixes: ISBN Tier 1 book-only; ADDITION-ONLY = ordered prefix ≥2 words; edition
+  marker → review; Unicode punctuation folded. 48 tests. design.md §7/§8.1/§8.3/§42 amended.
+- Decided 2026-09-17: `thesis` ↔ `journalArticle` stays incompatible (D6) — different works.
+- Still outstanding: UI run in disposable profile; adapter field shapes against real
+  `Zotero.Item`; `onMainWindowLoad`; placeholder `update_url`; `alert()` output.
