@@ -72,6 +72,33 @@ describe("Find Copies command", () => {
     expect(harness.elements).toHaveLength(0);
   });
 
+  it("keeps menu entries per main window so closing one window does not strip the other", () => {
+    // macOS lets the main window close and reopen; Zotero fires onMainWindowLoad/Unload per window.
+    const first = menuHarness();
+    const second = menuHarness();
+    const command = new FindCopiesCommand({
+      debug: () => undefined,
+      getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
+      getMainWindow: () => ({ document: first.document } as unknown as Window),
+      Libraries: { getAll: () => [] },
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+    });
+    const firstWindow = { document: first.document } as unknown as Window;
+    const secondWindow = { document: second.document } as unknown as Window;
+
+    command.register(firstWindow);
+    command.register(secondWindow);
+    expect(first.elements).toHaveLength(2);
+    expect(second.elements).toHaveLength(2);
+
+    command.unregister(firstWindow);
+    expect(first.elements).toHaveLength(0);
+    expect(second.elements).toHaveLength(2);
+
+    command.unregister();
+    expect(second.elements).toHaveLength(0);
+  });
+
   it("shows an explicit selection instruction instead of scanning an ambiguous selection", async () => {
     const harness = menuHarness();
     const dialogs: { url: string; args: { title: string; text: string } }[] = [];

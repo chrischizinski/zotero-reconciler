@@ -36,8 +36,8 @@ export interface CommandOptions {
 }
 
 export class FindCopiesCommand {
-  private menuItem: Element | undefined;
-  private auditMenuItem: Element | undefined;
+  /** Menu entries are DOM nodes, so they exist per main window (macOS can close and reopen it). */
+  private readonly menuItems = new Map<Window, Element[]>();
   private lookup: WorkLookup | undefined;
   private readonly store: IndexStore | undefined;
   private readonly now: () => Date;
@@ -72,8 +72,8 @@ export class FindCopiesCommand {
     return snapshot;
   }
 
-  register(): void {
-    const window = this.zotero.getMainWindow();
+  /** Adds the item-menu entries to `window` (defaults to the current main window). Idempotent per window. */
+  register(window: Window = this.zotero.getMainWindow()): void {
     const document = window.document as XULDocument;
     const menu = document.getElementById("zotero-itemmenu");
     if (!menu || document.getElementById(MENU_ID)) return;
@@ -83,21 +83,23 @@ export class FindCopiesCommand {
     item.setAttribute("label", "Find Copies in Other Libraries");
     item.addEventListener("command", () => void this.run());
     menu.appendChild(item);
-    this.menuItem = item;
 
     const auditItem = document.createXULElement("menuitem");
     auditItem.id = AUDIT_MENU_ID;
     auditItem.setAttribute("label", "Audit Cross-Library Coverage");
     auditItem.addEventListener("command", () => void this.runAudit());
     menu.appendChild(auditItem);
-    this.auditMenuItem = auditItem;
+
+    this.menuItems.set(window, [item, auditItem]);
   }
 
-  unregister(): void {
-    this.menuItem?.remove();
-    this.auditMenuItem?.remove();
-    this.menuItem = undefined;
-    this.auditMenuItem = undefined;
+  /** Removes the entries from one window (on its unload) or from every window (on shutdown). */
+  unregister(window?: Window): void {
+    const targets = window ? [window] : [...this.menuItems.keys()];
+    for (const target of targets) {
+      for (const element of this.menuItems.get(target) ?? []) element.remove();
+      this.menuItems.delete(target);
+    }
   }
 
   async runAudit(): Promise<void> {

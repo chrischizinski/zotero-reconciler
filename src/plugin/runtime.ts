@@ -6,6 +6,7 @@ declare const Zotero: {
   debug(message: string): void;
   getActiveZoteroPane(): unknown;
   getMainWindow(): Window;
+  getMainWindows(): Window[];
   Libraries: unknown;
   Items: unknown;
   DataDirectory: { dir: string };
@@ -23,6 +24,9 @@ let coverageColumn: CoverageColumn | undefined;
 type ReconcilerRuntime = {
   startup(): void;
   shutdown(): void;
+  /** Bootstrap forwards Zotero's per-window hooks; menu entries live in each window's DOM. */
+  onMainWindowLoad(window: Window): void;
+  onMainWindowUnload(window: Window): void;
 };
 
 const runtimeGlobal = globalThis as typeof globalThis & {
@@ -47,7 +51,7 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     });
     findCopiesCommand = command;
     coverageColumn = new CoverageColumn(Zotero.ItemTreeManager, () => command.workLookup);
-    command.register();
+    for (const window of Zotero.getMainWindows()) command.register(window);
     coverageColumn.register();
     void command.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
     log("Started read-only matching foundation.");
@@ -58,5 +62,11 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     findCopiesCommand?.unregister();
     findCopiesCommand = undefined;
     log("Stopped.");
+  },
+  onMainWindowLoad(window: Window): void {
+    findCopiesCommand?.register(window);
+  },
+  onMainWindowUnload(window: Window): void {
+    findCopiesCommand?.unregister(window);
   },
 };

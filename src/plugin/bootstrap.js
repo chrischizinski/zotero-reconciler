@@ -20,6 +20,15 @@ async function startup({ id, version, rootURI, resourceURI }, reason) {
   globalThis.ZoteroLibraryReconciler.startup();
 }
 
+// Menu entries are per-window DOM nodes; the item-tree column is global and needs no per-window work.
+function onMainWindowLoad({ window }) {
+  globalThis.ZoteroLibraryReconciler?.onMainWindowLoad(window);
+}
+
+function onMainWindowUnload({ window }) {
+  globalThis.ZoteroLibraryReconciler?.onMainWindowUnload(window);
+}
+
 function shutdown(data, reason) {
   globalThis.ZoteroLibraryReconciler?.shutdown();
   if (chromeHandle) {
