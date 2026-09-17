@@ -88,3 +88,31 @@ Two defects found only by contact with real `Zotero.Item` objects, both fixed:
 
 `alert()` was replaced by a resizable report window (`chrome/content/report.xhtml`) — a
 library-sized audit does not fit a modal alert.
+
+## Addendum — Tier 0 linked-item oracle (same day, later)
+
+Zotero's `owl:sameAs` linked-item relations (written on every drag between libraries) are
+user-asserted copies and so serve as a second oracle, independent of `duplicates.js`.
+
+Account under test: 838 linked pairs between regular items in libraries the account holds.
+
+| Run | Rules-only misses | Change |
+|---|---|---|
+| 1 | 21 | baseline |
+| 2 | 20 | BibTeX braces `{D}iversity` deleted in normalization |
+| 3 | 17 | corporate creator connectives/acronym dropped; `document` compatible with specific types |
+
+Final 17, each hand-checked against the database:
+
+- **9 stale links** — the user overwrote one copy with a different paper after copying; the
+  link survived. Different works. These made Tier 0-as-override a false-positive path (run 1
+  clustered them); Tier 0 now corroborates only, and these surface as REVIEW so the user can
+  repair the link.
+- **4 data errors in one copy** — wrong DOI (×2), year 1933 for 2023, IPBES summary typed
+  `journalArticle`. REVIEW is correct; D1/D5/D6 did their job.
+- **4 related-by-policy** — 1st/2nd edition, standard vs "Ver. 4.0", thesis ↔ article,
+  conferencePaper ↔ article. REVIEW is the designed verdict (§8.4).
+
+Rules-only recall against user-asserted copies: 821 / 825 non-stale pairs = 99.5%; the four
+misses are the data errors above, which the rules must not paper over. Zero linked pairs of
+different works are clustered.

@@ -235,3 +235,5 @@ Still open from the review (not changed):
 - Decided 2026-09-17: `document` compatible with every parent type (specific type canonical);
   `document ↔ journalArticle` RELATED like preprint. Zero doc↔article same-title pairs in user
   data; 8 doc↔report/book. `canonicalTypeRank()` centralised in types.ts. 77 tests.
+- Live run 3: 17 review (9 stale links, 4 data errors, 4 policy-related). Zero matcher gaps.
+  Recorded in docs/validation-2026-09-17.md addendum. Matcher validation vs Tier 0 oracle: done.
