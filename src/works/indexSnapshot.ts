@@ -88,6 +88,19 @@ export class WorkLookup {
     const others = new Set(work.items.filter((item) => item.libraryID !== libraryID).map((item) => item.libraryID));
     return [...others].map((id) => this.libraryNames.get(id) ?? `Library ${id}`).sort();
   }
+
+  /**
+   * How many items of this item's own library share its work (1 = no same-library copy).
+   * Same-library copies are Zotero duplicates, not cross-library coverage, so callers show
+   * them separately rather than folding them into `alsoIn`. The audit never compares two
+   * items of one library directly (Zotero's Duplicate Items owns that), so this only exceeds
+   * 1 when a copy in another library links them transitively.
+   */
+  copiesHere(libraryID: number, itemKey: string): number {
+    const work = this.workFor(libraryID, itemKey);
+    if (!work) return 1;
+    return work.items.filter((item) => item.libraryID === libraryID).length;
+  }
 }
 
 /** Libraries whose Zotero version moved since the snapshot, plus any added or removed since. */

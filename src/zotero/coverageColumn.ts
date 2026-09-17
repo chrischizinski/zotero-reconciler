@@ -58,8 +58,14 @@ export class CoverageColumn {
     if (this.registeredKey) this.manager.refreshColumns();
   }
 
+  /** Other libraries holding the work; a leading "N copies here" flags same-library duplicates. */
   cellText(item: { libraryID: number; key: string; isRegularItem(): boolean }): string {
     if (!item.isRegularItem()) return "";
-    return this.lookup()?.alsoIn(item.libraryID, item.key).join(", ") ?? "";
+    const lookup = this.lookup();
+    if (!lookup) return "";
+    const parts = [...lookup.alsoIn(item.libraryID, item.key)];
+    const copies = lookup.copiesHere(item.libraryID, item.key);
+    if (copies > 1) parts.unshift(`${copies} copies here`);
+    return parts.join(", ");
   }
 }
