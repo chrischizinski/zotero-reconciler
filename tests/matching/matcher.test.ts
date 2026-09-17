@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchItems } from "../../src/matching/matcher.js";
+import { canonicalItemType, matchItems } from "../../src/matching/matcher.js";
 import { normalizeISBN, normalizeItem } from "../../src/matching/normalize.js";
 import type { ScannedItem } from "../../src/matching/types.js";
 
@@ -311,5 +311,26 @@ describe("corporate creators and versions (real linked pairs 2026-09-17)", () =>
       group({ itemType: "document", fields: { title: "Open standards for the practice of conservation. Ver. 4.0", date: "2020" }, creators: [{ lastName: "Conservation Measures Partnership (CMP)", fieldMode: 1 }] })
     );
     expect(result).toMatchObject({ verdict: "review", tier: "review" });
+  });
+});
+
+describe("`document` is Zotero's generic type (§8.4, decision 2026-09-17)", () => {
+  const group = (overrides: Partial<ScannedItem> & { fields?: ScannedItem["fields"] } = {}): ScannedItem =>
+    item({ ref: { libraryID: 2, libraryName: "Group", itemKey: "BBBB2222", version: 1 }, ...overrides });
+  const briefing = { fields: { title: "What is human-wildlife conflict? Briefing paper by the IUCN SSC task force", date: "2020" }, creators: [{ lastName: "IUCN SSC Human-Wildlife Conflict Task Force", fieldMode: 1 as const }] };
+
+  it("matches a document against the report or book it was filed as elsewhere, and the specific type is canonical", () => {
+    expect(matchItems(item({ itemType: "document", ...briefing }), group({ itemType: "report", ...briefing }))).toMatchObject({ verdict: "match", tier: "high", typeRelation: "compatible" });
+    expect(matchItems(item({ itemType: "document", ...briefing }), group({ itemType: "book", ...briefing }))).toMatchObject({ verdict: "match", tier: "high" });
+    expect(canonicalItemType("document", "report")).toBe("report");
+    expect(canonicalItemType("report", "document")).toBe("report");
+  });
+
+  it("stays RELATED with a journal article on bibliographic evidence alone — a working paper and its article are different records", () => {
+    expect(matchItems(item({ itemType: "document" }), group({ itemType: "journalArticle" }))).toMatchObject({ verdict: "related", typeRelation: "related" });
+    // …but a shared DOI says the document IS the article (existing §8.4 identifier rule), article canonical.
+    const withDOI = matchItems(item({ itemType: "document", fields: { doi: "10.1/a" } }), group({ itemType: "journalArticle", fields: { doi: "10.1/a" } }));
+    expect(withDOI).toMatchObject({ verdict: "match", tier: "exact" });
+    expect(canonicalItemType("document", "journalArticle")).toBe("journalArticle");
   });
 });

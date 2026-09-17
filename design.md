@@ -705,6 +705,14 @@ thesis ↔ book                                → RELATED, never an automatic m
 thesis ↔ journalArticle                      → NOT compatible  (decision 2026-09-17: a thesis
                                                and the article derived from it are different
                                                works, even with identical title/author/year)
+document ↔ any parent type                   → compatible; the specific type is canonical
+                                               (decision 2026-09-17: `document` is Zotero's
+                                               generic type; 8 real cross-library pairs were
+                                               report/book in one library, document in another)
+document ↔ journalArticle                    → RELATED, never an automatic match — same
+                                               reasoning as preprint: a working paper filed as
+                                               `document` and its published article are
+                                               different records. Shared DOI still matches.
 anything ↔ attachment / note / annotation    → excluded from matching entirely  (§6)
 ```
 

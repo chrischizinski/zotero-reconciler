@@ -1,6 +1,6 @@
 import { denialEvidence } from "../matching/matcher.js";
 import { normalizeItem } from "../matching/normalize.js";
-import { CANONICAL_TYPE_RANK, type MatchResult, type MatchTier, type ScannedItem } from "../matching/types.js";
+import { canonicalTypeRank, type MatchResult, type MatchTier, type ScannedItem } from "../matching/types.js";
 
 export interface MatchPair {
   left: ScannedItem;
@@ -82,8 +82,7 @@ function weakerTier(...tiers: (MatchTier | undefined)[]): MatchTier {
 }
 
 function canonicalItem(sorted: readonly ScannedItem[]): ScannedItem {
-  const rank = (item: ScannedItem): number => CANONICAL_TYPE_RANK[item.itemType.toLowerCase()] ?? Number.MAX_SAFE_INTEGER;
-  return sorted.reduce((best, item) => rank(item) < rank(best) ? item : best);
+  return sorted.reduce((best, item) => canonicalTypeRank(item.itemType) < canonicalTypeRank(best.itemType) ? item : best);
 }
 
 function refKey(item: ScannedItem): string {

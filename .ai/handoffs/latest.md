@@ -232,3 +232,6 @@ Still open from the review (not changed):
 - OPEN policy (a): should `document` be a wildcard type compatible with any parent type?
   3 real same-work pairs blocked by D6. Not implemented pending user decision.
 - 75 tests. Built, dev Zotero restarted; not re-run live.
+- Decided 2026-09-17: `document` compatible with every parent type (specific type canonical);
+  `document ↔ journalArticle` RELATED like preprint. Zero doc↔article same-title pairs in user
+  data; 8 doc↔report/book. `canonicalTypeRank()` centralised in types.ts. 77 tests.

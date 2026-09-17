@@ -85,3 +85,16 @@ export const CANONICAL_TYPE_RANK: Readonly<Record<string, number>> = {
   thesis: 3,
   preprint: 4
 };
+
+/**
+ * Zotero's generic catch-all type. Compatible with every parent type for matching (§8.4), and
+ * always the least canonical record: a `document` copy of a report is a report.
+ */
+export const GENERIC_ITEM_TYPE = "document";
+
+/** Lower is more canonical; unlisted specific types tie below the listed ones, `document` below all. */
+export function canonicalTypeRank(itemType: string): number {
+  const type = itemType.toLowerCase();
+  if (type === GENERIC_ITEM_TYPE) return Number.MAX_SAFE_INTEGER;
+  return CANONICAL_TYPE_RANK[type] ?? Number.MAX_SAFE_INTEGER - 1;
+}

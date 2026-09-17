@@ -1,12 +1,13 @@
 import { areLinked } from "./links.js";
 import { normalizeItem } from "./normalize.js";
-import { CANONICAL_TYPE_RANK } from "./types.js";
+import { canonicalTypeRank, GENERIC_ITEM_TYPE } from "./types.js";
 import type { MatchEvidence, MatchResult, NormalizedItem, ScannedItem, TitleRelation, TypeRelation } from "./types.js";
 
 const RELATED_TYPE_PAIRS = new Set([
   "journalarticle|preprint",
   "conferencepaper|journalarticle",
-  "book|thesis"
+  "book|thesis",
+  "document|journalarticle"
 ]);
 
 export interface MatchOptions {
@@ -144,15 +145,23 @@ function compareTitles(left: NormalizedItem, right: NormalizedItem): TitleRelati
 
 /** Picks the published form among related item types (§8.4). Ties keep the left type. */
 export function canonicalItemType(left: string, right: string): string {
-  const rank = (type: string): number => CANONICAL_TYPE_RANK[type.toLowerCase()] ?? Number.MAX_SAFE_INTEGER;
-  return rank(right) < rank(left) ? right : left;
+  return canonicalTypeRank(right) < canonicalTypeRank(left) ? right : left;
 }
 
+/**
+ * §8.4. `document` is Zotero's generic type and matches any specific type — except that
+ * `document ↔ journalArticle` is RELATED, like `preprint ↔ journalArticle`: a working paper
+ * or agency PDF filed as `document` and the article it became are different records even
+ * with identical title, creators, and year (decision 2026-09-17). A shared DOI still matches.
+ */
 function compareTypes(left: string, right: string): TypeRelation {
   const normalizedLeft = left.toLowerCase();
   const normalizedRight = right.toLowerCase();
   if (normalizedLeft === normalizedRight) return "compatible";
-  return RELATED_TYPE_PAIRS.has([normalizedLeft, normalizedRight].sort().join("|")) ? "related" : "incompatible";
+  const pair = [normalizedLeft, normalizedRight].sort().join("|");
+  if (RELATED_TYPE_PAIRS.has(pair)) return "related";
+  if (normalizedLeft === GENERIC_ITEM_TYPE || normalizedRight === GENERIC_ITEM_TYPE) return "compatible";
+  return "incompatible";
 }
 
 function creatorsCompatible(left: NormalizedItem, right: NormalizedItem): boolean {
