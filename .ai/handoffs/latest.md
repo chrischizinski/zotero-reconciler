@@ -110,7 +110,7 @@ Changed:
 Commands run: `npm run typecheck`, `npx vitest run` (41 passed), `npm run build`.
 
 Still open from the review (not changed):
-- Feed libraries probably included by `Zotero.Libraries.getAll()`; filter on `libraryType`.
+- ~~Feed libraries~~ — fixed 2026-09-17: `isBibliographicLibrary` filters `getAll()` to user/group (verified against `feed.js`: `libraryType = 'feed'`).
 - `bootstrap.js` lacks `onMainWindowLoad` / `onMainWindowUnload`; menu lost on window reopen.
 - `manifest.json` placeholder `update_url`.
 - `edition` field not scanned; arXiv version suffix not stripped; `alert()` output.

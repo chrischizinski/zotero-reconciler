@@ -24,6 +24,13 @@ export interface ZoteroItem {
 export interface ZoteroLibrary {
   libraryID: number;
   name: string;
+  /** `user` | `group` | `feed`. Feeds hold RSS items, not bibliographic records. */
+  libraryType: string;
+}
+
+/** Only user and group libraries hold bibliographic records (§6); `Zotero.Libraries.getAll()` also returns feeds. */
+export function isBibliographicLibrary(library: ZoteroLibrary): boolean {
+  return library.libraryType === "user" || library.libraryType === "group";
 }
 
 export interface ZoteroReadAPI {
@@ -32,7 +39,7 @@ export interface ZoteroReadAPI {
 }
 
 export async function auditLibraries(api: ZoteroReadAPI): Promise<CrossLibraryAudit> {
-  const libraries = api.Libraries.getAll();
+  const libraries = api.Libraries.getAll().filter(isBibliographicLibrary);
   const myLibraryID = api.Libraries.userLibraryID;
   if (myLibraryID === undefined) throw new Error("Zotero did not provide the My Library identifier.");
   const libraryItems = await Promise.all(libraries.map(async (library) => ({
@@ -86,9 +93,9 @@ export function toScannedItem(item: ZoteroItem, libraryName: string): ScannedIte
 }
 
 export async function findCopies(api: ZoteroReadAPI, sourceItem: ZoteroItem): Promise<FindCopiesResult> {
-  const libraries = api.Libraries.getAll();
+  const libraries = api.Libraries.getAll().filter(isBibliographicLibrary);
   const sourceLibrary = libraries.find((library) => library.libraryID === sourceItem.libraryID);
-  if (!sourceLibrary) throw new Error(`The source library ${sourceItem.libraryID} is unavailable.`);
+  if (!sourceLibrary) throw new Error(`The source library ${sourceItem.libraryID} is unavailable or is not a user or group library.`);
 
   const source = toScannedItem(sourceItem, sourceLibrary.name);
   const candidateLibraries = libraries.filter((library) => library.libraryID !== sourceItem.libraryID);

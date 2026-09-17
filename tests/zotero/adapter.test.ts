@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isCandidatePair } from "../../src/matching/blocking.js";
 import { normalizeItem } from "../../src/matching/normalize.js";
-import { findCopies, toScannedItem, type ZoteroItem } from "../../src/zotero/adapter.js";
+import { auditLibraries, findCopies, toScannedItem, type ZoteroItem } from "../../src/zotero/adapter.js";
 import { renderResult } from "../../src/zotero/findCopiesCommand.js";
 
 function zoteroItem(overrides: Partial<ZoteroItem> & { fields?: Record<string, string> } = {}): ZoteroItem {
@@ -47,7 +47,7 @@ describe("Zotero read adapter", () => {
     const copy = zoteroItem({ libraryID: 2, key: "BBBB2222", fields: { title: "Different display title", DOI: "10.1/example" } });
     const attachment = zoteroItem({ libraryID: 2, isRegularItem: () => false });
     const result = await findCopies({
-      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library" }, { libraryID: 2, name: "Group" }] },
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Group", libraryType: "group" }] },
       Items: { getAll: async (libraryID) => libraryID === 2 ? [copy, attachment] : [source] }
     }, source);
 
@@ -60,7 +60,7 @@ describe("Zotero read adapter", () => {
     const source = zoteroItem({ fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
     const copy = zoteroItem({ libraryID: 2, fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
     const result = await findCopies({
-      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library" }, { libraryID: 2, name: "Waterfowl Group" }] },
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Waterfowl Group", libraryType: "group" }] },
       Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source] }
     }, source);
     expect(renderResult(result)).toContain("Waterfowl Group — MATCH");
@@ -71,9 +71,33 @@ describe("Zotero read adapter", () => {
     const source = zoteroItem({ fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
     const copy = zoteroItem({ libraryID: 2, fields: { title: "Waterfowl harvest", DOI: "10.1/example" }, getCreators: () => [{ lastName: "Jones", firstName: "Alex" }] });
     const result = await findCopies({
-      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library" }, { libraryID: 2, name: "Waterfowl Group" }] },
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Waterfowl Group", libraryType: "group" }] },
       Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source] }
     }, source);
     expect(renderResult(result)).toContain("Differences: creators (Smith, Jane → Jones, Alex)");
+  });
+
+  it("never scans feed libraries: RSS items are not bibliographic records (§6)", async () => {
+    const source = zoteroItem({ fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
+    const feedCopy = zoteroItem({ libraryID: 3, key: "FEED0001", fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
+    const feedOnly = zoteroItem({ libraryID: 3, key: "FEED0002", fields: { title: "Some RSS headline", DOI: "10.1/rss" } });
+    const api = {
+      Libraries: {
+        getAll: () => [
+          { libraryID: 1, name: "My Library", libraryType: "user" },
+          { libraryID: 2, name: "Group", libraryType: "group" },
+          { libraryID: 3, name: "Journal RSS", libraryType: "feed" }
+        ],
+        userLibraryID: 1
+      },
+      Items: { getAll: async (libraryID: number) => libraryID === 3 ? [feedCopy, feedOnly] : libraryID === 1 ? [source] : [] }
+    };
+
+    const copies = await findCopies(api, source);
+    expect(copies).toMatchObject({ scannedLibraries: 1, scannedItems: 0 });
+
+    const audit = await auditLibraries(api);
+    expect(audit.works.map((work) => work.items.map((item) => item.ref.itemKey))).toEqual([["AAAA1111"]]);
+    expect(audit.missingFromMyLibrary).toHaveLength(0);
   });
 });
