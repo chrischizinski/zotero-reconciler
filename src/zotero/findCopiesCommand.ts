@@ -1,6 +1,8 @@
-import { auditLibraries, findCopies, type FindCopiesResult, type ZoteroItem, type ZoteroReadAPI } from "./adapter.js";
+import { auditLibraries, currentLibraryVersions, findCopies, type FindCopiesResult, type ZoteroItem, type ZoteroReadAPI } from "./adapter.js";
 import type { CrossLibraryAudit } from "../audit/crossLibraryAudit.js";
 import { compareBibliographicFields } from "../comparison/fieldComparator.js";
+import { createSnapshot, staleLibraries, WorkLookup, type IndexSnapshot } from "../works/indexSnapshot.js";
+import type { IndexStore } from "./indexStore.js";
 
 interface ZoteroPane {
   getSelectedItems(): ZoteroItem[];
@@ -27,8 +29,29 @@ const AUDIT_MENU_ID = "zotero-library-reconciler-audit";
 export class FindCopiesCommand {
   private menuItem: Element | undefined;
   private auditMenuItem: Element | undefined;
+  private lookup: WorkLookup | undefined;
 
-  constructor(private readonly zotero: ZoteroUI) {}
+  constructor(
+    private readonly zotero: ZoteroUI,
+    private readonly store?: IndexStore,
+    private readonly now: () => Date = () => new Date()
+  ) {}
+
+  /** The last persisted index, if any; the audit command refreshes it. */
+  get workLookup(): WorkLookup | undefined {
+    return this.lookup;
+  }
+
+  /** Loads the persisted index at startup so consumers (e.g. a coverage column) can answer immediately. */
+  async restoreIndex(): Promise<IndexSnapshot | undefined> {
+    const snapshot = await this.store?.load();
+    if (snapshot) {
+      this.lookup = new WorkLookup(snapshot);
+      const stale = staleLibraries(snapshot, currentLibraryVersions(this.zotero));
+      this.zotero.debug(`[Zotero Library Reconciler] Restored index of ${snapshot.works.length} works from ${snapshot.scannedAt}; ${stale.length} librar${stale.length === 1 ? "y has" : "ies have"} changed since.`);
+    }
+    return snapshot;
+  }
 
   register(): void {
     const window = this.zotero.getMainWindow();
@@ -60,7 +83,20 @@ export class FindCopiesCommand {
 
   async runAudit(): Promise<void> {
     try {
-      this.show(renderAudit(await auditLibraries(this.zotero)), "Cross-Library Audit");
+      const { audit, libraries } = await auditLibraries(this.zotero);
+      const snapshot = createSnapshot(audit, libraries, this.now());
+      this.lookup = new WorkLookup(snapshot);
+      let persistence = "Index not persisted (no store configured).";
+      if (this.store) {
+        try {
+          await this.store.save(snapshot);
+          persistence = `Index of ${snapshot.works.length} works saved to ${this.store.location}.`;
+        } catch (error) {
+          this.zotero.debug(`[Zotero Library Reconciler] Index save failed: ${String(error)}`);
+          persistence = "Index could not be saved; see Zotero's debug output.";
+        }
+      }
+      this.show(`${renderAudit(audit)}\n\n${persistence}`, "Cross-Library Audit");
     } catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Audit failed: ${String(error)}`);
       this.show("Cross-library audit could not complete. See Zotero's debug output for details.");

@@ -96,7 +96,7 @@ describe("Zotero read adapter", () => {
     const copies = await findCopies(api, source);
     expect(copies).toMatchObject({ scannedLibraries: 1, scannedItems: 0 });
 
-    const audit = await auditLibraries(api);
+    const { audit } = await auditLibraries(api);
     expect(audit.works.map((work) => work.items.map((item) => item.ref.itemKey))).toEqual([["AAAA1111"]]);
     expect(audit.missingFromMyLibrary).toHaveLength(0);
   });
@@ -129,7 +129,7 @@ describe("Zotero read adapter", () => {
     const result = await findCopies(api, source);
     expect(result.copies).toHaveLength(1);
     shells.get("BBBB2222")!.loaded = false;
-    const audit = await auditLibraries(api);
+    const { audit } = await auditLibraries(api);
     expect(audit.confirmedPairs).toHaveLength(1);
   });
 });

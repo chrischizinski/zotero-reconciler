@@ -133,3 +133,17 @@ Still open from the review (not changed):
    the other libraries holding each work. Chosen over writing `reconciler:in:<lib>` tags:
    tags are a write path (§25 gates), sync to collaborators, and go stale. Tag writer may
    come later as opt-in, My-Library-only, namespaced, one-click removable.
+
+## 2026-09-17 index persistence (queued item 1 — done)
+
+- `src/works/indexSnapshot.ts` (pure): `createSnapshot`, `WorkLookup.alsoIn`, `staleLibraries`.
+  Snapshot holds refs + versions only — no bibliographic fields (§10 rebuildable).
+- `src/zotero/indexStore.ts`: one JSON file, `<dataDir>/zotero-library-reconciler/index.json`,
+  atomic write via `IOUtils.writeJSON` tmpPath. Corrupt/foreign file → treated as absent.
+- Audit command saves snapshot and reports the path; `restoreIndex()` at startup loads it
+  and logs how many libraries changed since (versions from `Zotero.Library.libraryVersion`).
+- Decision: JSON, not SQLite — audit compute is 0.06 s; incremental reprocessing (§29) not
+  justified yet. Revisit if it ever is.
+- Report window gained **Copy All** (nsIClipboardHelper).
+- Confirmed live: 534 KB file, restore log line on restart, 0 stale.
+- Next: queued item 2, "Also in" item-tree column reading `FindCopiesCommand.workLookup`.

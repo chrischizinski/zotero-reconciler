@@ -1,4 +1,5 @@
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
+import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
 
 declare const Zotero: {
   debug(message: string): void;
@@ -6,7 +7,10 @@ declare const Zotero: {
   getMainWindow(): Window;
   Libraries: unknown;
   Items: unknown;
+  DataDirectory: { dir: string };
 };
+declare const IOUtils: SnapshotFileSystem;
+declare const PathUtils: { join(...parts: string[]): string };
 
 let findCopiesCommand: FindCopiesCommand | undefined;
 
@@ -25,10 +29,13 @@ function log(message: string): void {
 
 runtimeGlobal.ZoteroLibraryReconciler = {
   startup(): void {
+    const store = IndexStore.inDataDirectory(IOUtils, Zotero.DataDirectory.dir, (...parts) => PathUtils.join(...parts));
     findCopiesCommand = new FindCopiesCommand(
       Zotero as ConstructorParameters<typeof FindCopiesCommand>[0],
+      store,
     );
     findCopiesCommand.register();
+    void findCopiesCommand.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
     log("Started read-only matching foundation.");
   },
   shutdown(): void {

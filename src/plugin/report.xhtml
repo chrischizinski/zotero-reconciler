@@ -16,11 +16,22 @@
       if (args.title) document.title = args.title;
       document.getElementById("report").value = args.text || "";
     }
+
+    function copyAll() {
+      const text = document.getElementById("report").value;
+      Components.classes["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(Components.interfaces.nsIClipboardHelper)
+        .copyString(text);
+      const button = document.getElementById("copy");
+      button.label = "Copied";
+      setTimeout(() => { button.label = "Copy All"; }, 1500);
+    }
   ]]></script>
   <vbox flex="1" style="padding: 12px; gap: 8px;">
     <html:textarea id="report" readonly="readonly" flex="1"
       style="flex: 1; width: 100%; box-sizing: border-box; resize: none; font: 13px -apple-system, system-ui, sans-serif; white-space: pre-wrap; padding: 8px;"/>
     <hbox pack="end">
+      <button id="copy" label="Copy All" oncommand="copyAll()"/>
       <button label="Close" oncommand="window.close()"/>
     </hbox>
   </vbox>

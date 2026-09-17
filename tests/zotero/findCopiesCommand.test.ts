@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FindCopiesCommand } from "../../src/zotero/findCopiesCommand.js";
 import type { ZoteroItem } from "../../src/zotero/adapter.js";
+import { IndexStore, type SnapshotFileSystem } from "../../src/zotero/indexStore.js";
 
 function selectedItem(): ZoteroItem {
   return {
@@ -89,5 +90,41 @@ describe("Find Copies command", () => {
     expect(dialogs).toHaveLength(1);
     expect(dialogs[0]?.url).toBe("chrome://zotero-library-reconciler/content/report.xhtml");
     expect(dialogs[0]?.args.text).toBe("Select one bibliographic item, then choose Find Copies in Other Libraries.");
+  });
+
+  it("persists the index after an audit and restores it at startup", async () => {
+    const files = new Map<string, unknown>();
+    const fs: SnapshotFileSystem = {
+      exists: async (path) => files.has(path),
+      readJSON: async (path) => files.get(path),
+      writeJSON: async (path, value) => { files.set(path, JSON.parse(JSON.stringify(value))); },
+      makeDirectory: async () => undefined
+    };
+    const store = IndexStore.inDataDirectory(fs, "/data", (...parts) => parts.join("/"));
+    const dialogs: string[] = [];
+    const debug: string[] = [];
+    const mine = { ...selectedItem(), getField: (field: string) => field === "title" ? "Waterfowl harvest" : field === "DOI" ? "10.1/x" : "" };
+    const copy = { ...mine, libraryID: 2, key: "BBBB2222" };
+    const zotero = {
+      debug: (message: string) => debug.push(message),
+      getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
+      getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 3 }], userLibraryID: 1 },
+      Items: { getAll: async (libraryID: number) => libraryID === 1 ? [mine] : [copy], loadDataTypes: async () => undefined }
+    };
+
+    const first = new FindCopiesCommand(zotero, store, () => new Date("2026-09-17T12:00:00Z"));
+    expect(await first.restoreIndex()).toBeUndefined();
+    await first.runAudit();
+    expect(dialogs[0]).toContain("Index of 1 works saved to /data/zotero-library-reconciler/index.json");
+    expect(first.workLookup?.alsoIn(1, "AAAA1111")).toEqual(["Group"]);
+
+    const second = new FindCopiesCommand(zotero, store);
+    const restored = await second.restoreIndex();
+    expect(restored?.scannedAt).toBe("2026-09-17T12:00:00.000Z");
+    expect(restored?.libraries).toEqual([{ libraryID: 1, name: "My Library", version: 10 }, { libraryID: 2, name: "Group", version: 3 }]);
+    expect(second.workLookup?.alsoIn(2, "BBBB2222")).toEqual(["My Library"]);
+    expect(debug.at(-1)).toContain("Restored index of 1 works");
+    expect(debug.at(-1)).toContain("0 libraries have changed");
   });
 });

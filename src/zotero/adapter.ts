@@ -3,6 +3,7 @@ import { matchNormalizedItems } from "../matching/matcher.js";
 import { normalizeItem } from "../matching/normalize.js";
 import { auditCrossLibraries, type CrossLibraryAudit } from "../audit/crossLibraryAudit.js";
 import type { CreatorInput, MatchResult, ScannedItem } from "../matching/types.js";
+import type { LibraryVersion } from "../works/indexSnapshot.js";
 
 export interface ZoteroCreator {
   lastName: string;
@@ -26,6 +27,8 @@ export interface ZoteroLibrary {
   name: string;
   /** `user` | `group` | `feed`. Feeds hold RSS items, not bibliographic records. */
   libraryType: string;
+  /** Zotero's per-library sync version; bumps on any change in the library. */
+  libraryVersion?: number;
 }
 
 /** Only user and group libraries hold bibliographic records (§6); `Zotero.Libraries.getAll()` also returns feeds. */
@@ -51,7 +54,13 @@ async function loadedRegularItems(api: ZoteroReadAPI, libraryID: number): Promis
   return items;
 }
 
-export async function auditLibraries(api: ZoteroReadAPI): Promise<CrossLibraryAudit> {
+export interface LibraryAuditResult {
+  audit: CrossLibraryAudit;
+  /** The libraries scanned, with their versions at scan time, for snapshot staleness (§29). */
+  libraries: readonly LibraryVersion[];
+}
+
+export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditResult> {
   const libraries = api.Libraries.getAll().filter(isBibliographicLibrary);
   const myLibraryID = api.Libraries.userLibraryID;
   if (myLibraryID === undefined) throw new Error("Zotero did not provide the My Library identifier.");
@@ -60,7 +69,15 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<CrossLibraryAu
     items: await loadedRegularItems(api, library.libraryID)
   })));
   const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name)));
-  return auditCrossLibraries(items, myLibraryID);
+  return {
+    audit: auditCrossLibraries(items, myLibraryID),
+    libraries: libraries.map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 }))
+  };
+}
+
+export function currentLibraryVersions(api: ZoteroReadAPI): readonly LibraryVersion[] {
+  return api.Libraries.getAll().filter(isBibliographicLibrary)
+    .map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 }));
 }
 
 export interface CopyMatch {
