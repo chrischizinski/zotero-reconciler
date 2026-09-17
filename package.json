@@ -2,6 +2,7 @@
   "name": "zotero-library-reconciler",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Read-only cross-library reconciliation tools for Zotero 10.",
   "scripts": {

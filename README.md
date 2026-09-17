@@ -140,4 +140,4 @@ disagreement with Zotero's own *Duplicate Items* view has been explained.
 
 ## License
 
-Not yet chosen.
+[MIT](LICENSE).

@@ -3,7 +3,7 @@
   "name": "Zotero Library Reconciler",
   "version": "0.1.0",
   "description": "Read-only cross-library match auditing for Zotero.",
-  "author": "Zotero Library Reconciler contributors",
+  "author": "Chris Chizinski",
   "applications": {
     "zotero": {
       "id": "zotero-library-reconciler@cchizinski2.local",
