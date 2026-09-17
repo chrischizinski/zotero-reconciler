@@ -191,3 +191,18 @@ Still open from the review (not changed):
   verified: menu after Cmd+W/reopen; "copies here" cell on the 2016 national survey rows.
 - Uncommitted. Next: user answers decisions A–D in the Phase 3 doc §11 (D = build Tier 0
   linked-item matching first — recommended yes).
+
+## 2026-09-17 Tier 0 — Zotero linked items (decision D = yes)
+
+- `ScannedItem.linkedItems` from `getRelationsByPredicate("owl:sameAs")` resolved via
+  `Zotero.URI.getURIItemLibraryKey` (sync, no DB); `"relations"` added to `loadDataTypes`.
+  `ZoteroReadAPI.URI` now required; `toScannedItem(item, name, uri)` third arg required.
+- `src/matching/links.ts`: `areLinked`, `linkKey`. Blocking adds `link:<lib>:<key>` blocks.
+  Matcher: Tier 0 first, before D6 (user copy event outranks inference). `MatchOptions
+  { ignoreLinkedItems }` for the oracle.
+- Audit: `linkedPairs`, `linkedButUnmatched` (rules-only verdict ≠ match) → report section
+  "Zotero linked items". design.md §8.0a; CLAUDE.md tier table.
+- Dev DB (read-only copy): 1,862 owl:sameAs relations, 1,628 on regular items, ~838 resolve
+  to an existing regular item in a library the account holds. Expect linkedPairs ≈ that.
+- 69 tests. Built; dev Zotero restarted; audit NOT yet re-run live (needs GUI click).
+  Persisted index predates Tier 0 — rerun audit to refresh.

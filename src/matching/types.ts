@@ -21,11 +21,22 @@ export interface ItemFields {
   extra?: string;
 }
 
+/** Another library's item that Zotero itself records as the same record (`owl:sameAs`). */
+export interface LinkedRef {
+  libraryID: number;
+  itemKey: string;
+}
+
 export interface ScannedItem {
   ref: ItemRef;
   itemType: string;
   fields: ItemFields;
   creators: CreatorInput[];
+  /**
+   * Zotero "linked items": written by Zotero whenever a user copies an item between libraries
+   * (drag-and-drop) and read back by its own duplicate-copy check. Tier 0 evidence (§8.0).
+   */
+  linkedItems?: readonly LinkedRef[];
 }
 
 export interface NormalizedIdentifiers {

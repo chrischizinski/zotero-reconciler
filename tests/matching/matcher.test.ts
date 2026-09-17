@@ -227,3 +227,35 @@ describe("rules learned from real-library validation (2026-09-17)", () => {
       .toMatchObject({ verdict: "match", tier: "high", titleRelation: "equivalent" });
   });
 });
+
+describe("Tier 0 — Zotero linked items (§8.0)", () => {
+  const group = (overrides: Partial<ScannedItem> & { fields?: ScannedItem["fields"] } = {}): ScannedItem =>
+    item({ ref: { libraryID: 2, libraryName: "Group", itemKey: "BBBB2222", version: 1 }, ...overrides });
+
+  it("matches at EXACT when Zotero recorded that one record was copied from the other, even with no shared bibliographic evidence", () => {
+    // The user made this copy; the relation is an assertion, not an inference. Titles differ
+    // completely here so nothing else could have produced the match.
+    const copy = group({ fields: { title: "Completely different title", date: "1999" }, creators: [{ lastName: "Nobody" }], linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
+    const result = matchItems(item(), copy);
+    expect(result).toMatchObject({ verdict: "match", tier: "exact" });
+    expect(result.evidence[0]).toMatchObject({ rule: "Tier 0" });
+    // Zotero writes the relation on the copy only; direction must not matter.
+    expect(matchItems(copy, item())).toMatchObject({ verdict: "match", tier: "exact" });
+  });
+
+  it("outranks D6: a linked copy whose type was later changed is still the same record", () => {
+    const retyped = group({ itemType: "report", linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
+    expect(matchItems(item(), retyped)).toMatchObject({ verdict: "match", tier: "exact" });
+    expect(matchItems(item(), group({ itemType: "report" }))).toMatchObject({ verdict: "no-match" });
+  });
+
+  it("ignores links that point at a different item", () => {
+    const other = group({ fields: { title: "Completely different title", date: "1999" }, linkedItems: [{ libraryID: 1, itemKey: "ZZZZ9999" }] });
+    expect(matchItems(item(), other)).toMatchObject({ verdict: "no-match" });
+  });
+
+  it("can be switched off so the bibliographic rules alone are audited against Zotero's links", () => {
+    const copy = group({ fields: { title: "Completely different title", date: "1999" }, linkedItems: [{ libraryID: 1, itemKey: "AAAA1111" }] });
+    expect(matchItems(item(), copy, { ignoreLinkedItems: true })).toMatchObject({ verdict: "no-match" });
+  });
+});

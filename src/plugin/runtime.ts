@@ -9,6 +9,7 @@ declare const Zotero: {
   getMainWindows(): Window[];
   Libraries: unknown;
   Items: unknown;
+  URI: unknown;
   DataDirectory: { dir: string };
   ItemTreeManager: ItemTreeManagerAPI;
 };

@@ -17,4 +17,16 @@ describe("cross-library audit", () => {
     expect(audit.missingFromMyLibrary).toHaveLength(1);
     expect(audit.missingFromMyLibrary[0]?.items[0]?.fields.title).toBe("Goose harvest");
   });
+
+  it("reports Zotero-linked pairs the bibliographic rules alone would miss, as matcher false negatives (§8.0 oracle)", () => {
+    const mine = item(1, "A", "Mallard harvest", "10.1/a");
+    const found = item(2, "B", "Mallard harvest", "10.1/a");
+    const missedByRules: ScannedItem = { ...item(2, "C", "Retitled after copying"), creators: [{ lastName: "Other" }], linkedItems: [{ libraryID: 1, itemKey: "A" }] };
+    const audit = auditCrossLibraries([mine, found, missedByRules], 1);
+    expect(audit.linkedPairs).toBe(1);
+    expect(audit.linkedButUnmatched.map(({ right }) => right.ref.itemKey)).toEqual(["C"]);
+    // The link still counts as a match in the index: all three are one work.
+    expect(audit.works).toHaveLength(1);
+    expect(audit.works[0]?.items.map((i) => i.ref.itemKey).sort()).toEqual(["A", "B", "C"]);
+  });
 });

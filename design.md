@@ -428,6 +428,36 @@ anything.
 persistent-identifier match (Tier 1) is the identifier agreeing with itself and is not
 subject to D1–D5 — but it *is* subject to D6.
 
+## 8.0a Tier 0 — Zotero linked items (added 2026-09-17)
+
+Zotero already records cross-library equivalence. Every drag-and-drop of an item into another
+library runs `item.clone(targetLibraryID)` and then `newItem.addLinkedItem(item)`, which
+stores an `owl:sameAs` relation on the copy; `getLinkedItem()` reads it back so a second
+drag reuses the existing copy instead of creating another (`collectionTree.js`,
+Zotero 10.0.2). These relations are **user actions, not inferences**.
+
+```text
+Tier 0  Either record carries owl:sameAs → the other     → EXACT, evidence "Tier 0"
+```
+
+Tier 0 is evaluated before every denial rule, **including D6**: a linked copy whose type the
+user later changed is still the record they copied. It is the only rule that outranks a
+denial, and it does so because the evidence is not bibliographic agreement but a recorded
+copy event. The relation is stored on the copy only, so the check is direction-agnostic.
+
+Two consequences:
+
+- **Oracle.** Every linked pair the Tier 1–3 rules would *not* match is a real matcher false
+  negative; the audit reports them (`linkedButUnmatched`) as a standing validation against
+  the user's own data. Expect a long tail here: users retitle or retype copies over time.
+- **Phase 3 obligation.** An import must write the same relation
+  (`docs/phase3-write-safeguards.md` §2), so that Zotero's own drag logic and this plugin's
+  next scan both recognise the copy.
+
+Scanner cost: one extra data type (`relations`) in `loadDataTypes`; resolution through
+`Zotero.URI.getURIItemLibraryKey` is synchronous and touches no database. URIs that point at
+libraries no longer in the account resolve to nothing and are dropped, as Zotero does.
+
 ## 8.1 Match Hierarchy
 
 ### Tier 1 — Exact persistent identifier

@@ -172,7 +172,20 @@ export function renderAudit(audit: CrossLibraryAudit): string {
   const differenceExamples = audit.discrepancies.slice(0, 10).map(({ left, right, differences }) => `• ${left.fields.title || "Untitled"} — ${left.ref.libraryName} / ${right.ref.libraryName}: ${differences.map(({ field }) => field).join(", ")}`);
   const missingSection = examples.length === 0 ? "No group-library-only works found." : `First ${examples.length} missing works:\n${examples.join("\n")}`;
   const differenceSection = differenceExamples.length === 0 ? "No metadata differences among confirmed matches." : `First ${differenceExamples.length} metadata differences:\n${differenceExamples.join("\n")}`;
-  return `${heading}\n\n${summary}\n\n${missingSection}\n\n${differenceSection}`;
+  return `${heading}\n\n${summary}\n\n${renderLinkedOracle(audit)}\n\n${missingSection}\n\n${differenceSection}`;
+}
+
+/**
+ * Zotero's own linked-item relations (§8.0) are user-asserted copies, so every linked pair the
+ * bibliographic rules alone would not match is a genuine matcher false negative worth reading.
+ */
+function renderLinkedOracle(audit: CrossLibraryAudit): string {
+  if (audit.linkedPairs === 0) return "Zotero linked items: none found (Zotero records these when you drag items between libraries).";
+  const missed = audit.linkedButUnmatched;
+  const head = `Zotero linked items: ${audit.linkedPairs} pairs; ${missed.length} would not be matched by the bibliographic rules alone.`;
+  if (missed.length === 0) return head;
+  const rows = missed.slice(0, 10).map(({ left, right, result }) => `• ${left.fields.title || "Untitled"} (${left.ref.libraryName}) / ${right.fields.title || "Untitled"} (${right.ref.libraryName}): ${result.evidence.map(({ detail }) => detail).join(" ")}`);
+  return `${head}\nFirst ${rows.length}:\n${rows.join("\n")}`;
 }
 
 export function renderResult(result: FindCopiesResult): string {

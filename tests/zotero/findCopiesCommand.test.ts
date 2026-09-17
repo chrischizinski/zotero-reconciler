@@ -11,7 +11,8 @@ function selectedItem(): ZoteroItem {
     itemType: "journalArticle",
     isRegularItem: () => true,
     getField: (field) => field === "title" ? "Waterfowl harvest" : "",
-    getCreators: () => [{ lastName: "Smith", firstName: "Jane" }]
+    getCreators: () => [{ lastName: "Smith", firstName: "Jane" }],
+    getRelationsByPredicate: () => []
   };
 }
 
@@ -58,6 +59,7 @@ describe("Find Copies command", () => {
       getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
       getMainWindow: () => ({ document: harness.document } as unknown as Window),
       Libraries: { getAll: () => [] },
+      URI: { getURIItemLibraryKey: () => false as const },
       Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     });
 
@@ -81,6 +83,7 @@ describe("Find Copies command", () => {
       getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
       getMainWindow: () => ({ document: first.document } as unknown as Window),
       Libraries: { getAll: () => [] },
+      URI: { getURIItemLibraryKey: () => false as const },
       Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     });
     const firstWindow = { document: first.document } as unknown as Window;
@@ -110,6 +113,7 @@ describe("Find Copies command", () => {
         openDialog: (url: string, _name: string, _features: string, args: { title: string; text: string }) => dialogs.push({ url, args })
       } as unknown as Window),
       Libraries: { getAll: () => [] },
+      URI: { getURIItemLibraryKey: () => false as const },
       Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     });
 
@@ -136,6 +140,7 @@ describe("Find Copies command", () => {
       debug: (message: string) => debug.push(message),
       getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
       getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
+      URI: { getURIItemLibraryKey: () => false as const },
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 3 }], userLibraryID: 1 },
       Items: { getAll: async (libraryID: number) => libraryID === 1 ? [mine] : [copy], loadDataTypes: async () => undefined }
     };
@@ -170,6 +175,7 @@ describe("Find Copies command", () => {
       debug: () => undefined,
       getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
       getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
+      URI: { getURIItemLibraryKey: () => false as const },
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 4 }], userLibraryID: 1 },
       Items: { getAll: async () => [], loadDataTypes: async () => undefined }
     };

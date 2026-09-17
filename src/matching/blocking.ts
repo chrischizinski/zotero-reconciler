@@ -1,13 +1,16 @@
+import { areLinked, linkKey } from "./links.js";
 import type { NormalizedItem } from "./types.js";
 
 const IDENTIFIER_KEYS: (keyof NormalizedItem["identifiers"])[] = ["doi", "isbn13", "pmid", "pmcid", "arxiv"];
 
 /**
- * Blocking (§8.5). Two records are candidates for pairwise matching when they share a
- * persistent identifier, or share a creator key within a compatible year, or are both
- * creatorless with the same normalized title. Records not sharing a block are never compared.
+ * Blocking (§8.5). Two records are candidates for pairwise matching when Zotero links them,
+ * or they share a persistent identifier, or share a creator key within a compatible year, or
+ * are both creatorless with the same normalized title. Records not sharing a block are never
+ * compared.
  */
 export function isCandidatePair(left: NormalizedItem, right: NormalizedItem): boolean {
+  if (areLinked(left, right)) return true;
   if (IDENTIFIER_KEYS.some((key) => left.identifiers[key] && left.identifiers[key] === right.identifiers[key])) return true;
   if (left.year !== undefined && right.year !== undefined && Math.abs(left.year - right.year) > 1) return false;
   if (left.creatorKeys.length > 0 && right.creatorKeys.length > 0) {
@@ -28,6 +31,9 @@ export function candidatePairs(items: readonly NormalizedItem[]): [number, numbe
     if (block) block.push(index); else blocks.set(key, [index]);
   };
   items.forEach((item, index) => {
+    // A linked pair shares the block named after the link target, whichever side carries the relation.
+    add(`link:${linkKey(item.ref)}`, index);
+    for (const ref of item.linkedItems ?? []) add(`link:${linkKey(ref)}`, index);
     for (const key of IDENTIFIER_KEYS) if (item.identifiers[key]) add(`${key}:${item.identifiers[key]}`, index);
     for (const creator of item.creatorKeys) add(`creator:${creator}`, index);
     if (item.creatorKeys.length === 0 && item.normalizedTitle) add(`title:${item.normalizedTitle}`, index);

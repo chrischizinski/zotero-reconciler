@@ -68,6 +68,7 @@ Every relationship carries a confidence level and human-readable *evidence* expl
 
 | Tier | Criteria | Result |
 |---|---|---|
+| 0 | Zotero `owl:sameAs` linked-item relation (user copied one from the other) | `EXACT` — outranks all denials incl. D6 (§8.0a) |
 | 1 | Exact persistent ID (DOI/PMID/arXiv; ISBN + compatible type) | `EXACT` — auto-reconcilable |
 | 2 | Normalized title exact + first author compatible + year exact | `HIGH` — auto-reconcilable |
 | 3 | Title similarity + author similarity + compatible year | `POSSIBLE` — manual review required |

@@ -2,7 +2,7 @@ import { isCandidatePair } from "../matching/blocking.js";
 import { matchNormalizedItems } from "../matching/matcher.js";
 import { normalizeItem } from "../matching/normalize.js";
 import { auditCrossLibraries, type CrossLibraryAudit } from "../audit/crossLibraryAudit.js";
-import type { CreatorInput, MatchResult, ScannedItem } from "../matching/types.js";
+import type { CreatorInput, LinkedRef, MatchResult, ScannedItem } from "../matching/types.js";
 import type { LibraryVersion } from "../works/indexSnapshot.js";
 
 export interface ZoteroCreator {
@@ -20,6 +20,8 @@ export interface ZoteroItem {
   /** `unformatted` returns Zotero's stored multipart date (`YYYY-MM-DD original`) instead of the user string. */
   getField(field: string, unformatted?: boolean, includeBaseMapped?: boolean): string;
   getCreators(): ZoteroCreator[];
+  /** Object URIs of related items for a predicate; requires the `relations` data type to be loaded. */
+  getRelationsByPredicate(predicate: string): string[];
 }
 
 export interface ZoteroLibrary {
@@ -43,10 +45,15 @@ export interface ZoteroReadAPI {
     /** Bulk-loads field and creator rows; `getAll()` returns shells and `getField()` throws until loaded. */
     loadDataTypes(items: ZoteroItem[], dataTypes: string[]): Promise<void>;
   };
+  /** `Zotero.URI`: resolves an item URI to its library and key without touching the database. */
+  URI: { getURIItemLibraryKey(itemURI: string): { libraryID: number; key: string } | false };
 }
 
 /** The data types `toScannedItem` reads. Loaded per library in one query each, skipping already-loaded items. */
-const SCAN_DATA_TYPES = ["itemData", "creators"];
+const SCAN_DATA_TYPES = ["itemData", "creators", "relations"];
+
+/** Zotero's predicate for "this item is a copy of that item in another library" (`Zotero.Relations.linkedObjectPredicate`). */
+export const LINKED_ITEM_PREDICATE = "owl:sameAs";
 
 async function loadedRegularItems(api: ZoteroReadAPI, libraryID: number): Promise<ZoteroItem[]> {
   const items = (await api.Items.getAll(libraryID, true, false)).filter(isEligibleItem);
@@ -68,7 +75,7 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditRe
     library,
     items: await loadedRegularItems(api, library.libraryID)
   })));
-  const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name)));
+  const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name, api.URI)));
   return {
     audit: auditCrossLibraries(items, myLibraryID),
     libraries: libraries.map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 }))
@@ -96,8 +103,9 @@ export function isEligibleItem(item: ZoteroItem): boolean {
   return item.isRegularItem();
 }
 
-export function toScannedItem(item: ZoteroItem, libraryName: string): ScannedItem {
+export function toScannedItem(item: ZoteroItem, libraryName: string, uri: ZoteroReadAPI["URI"]): ScannedItem {
   if (!isEligibleItem(item)) throw new Error("Only regular bibliographic items can be reconciled.");
+  const linkedItems = linkedRefs(item, uri);
   const title = item.getField("title");
   // Zotero's duplicate detector reads the multipart form so the year is always the first four characters (§7).
   const date = item.getField("date", true, true);
@@ -116,8 +124,19 @@ export function toScannedItem(item: ZoteroItem, libraryName: string): ScannedIte
       ...(issn ? { issn } : {}),
       ...(extra ? { extra } : {})
     },
-    creators: item.getCreators().map(toCreatorInput)
+    creators: item.getCreators().map(toCreatorInput),
+    ...(linkedItems.length > 0 ? { linkedItems } : {})
   };
+}
+
+/** Tier 0 evidence (§8.0). URIs that no longer resolve to a known library are dropped, as Zotero's own `getLinkedItem` does. */
+function linkedRefs(item: ZoteroItem, uri: ZoteroReadAPI["URI"]): LinkedRef[] {
+  const refs: LinkedRef[] = [];
+  for (const itemURI of item.getRelationsByPredicate(LINKED_ITEM_PREDICATE)) {
+    const resolved = uri.getURIItemLibraryKey(itemURI);
+    if (resolved) refs.push({ libraryID: resolved.libraryID, itemKey: resolved.key });
+  }
+  return refs;
 }
 
 export async function findCopies(api: ZoteroReadAPI, sourceItem: ZoteroItem): Promise<FindCopiesResult> {
@@ -125,7 +144,7 @@ export async function findCopies(api: ZoteroReadAPI, sourceItem: ZoteroItem): Pr
   const sourceLibrary = libraries.find((library) => library.libraryID === sourceItem.libraryID);
   if (!sourceLibrary) throw new Error(`The source library ${sourceItem.libraryID} is unavailable or is not a user or group library.`);
 
-  const source = toScannedItem(sourceItem, sourceLibrary.name);
+  const source = toScannedItem(sourceItem, sourceLibrary.name, api.URI);
   const candidateLibraries = libraries.filter((library) => library.libraryID !== sourceItem.libraryID);
   const libraryItems = await Promise.all(candidateLibraries.map(async (library) => ({
     library,
@@ -134,7 +153,7 @@ export async function findCopies(api: ZoteroReadAPI, sourceItem: ZoteroItem): Pr
 
   const normalizedSource = normalizeItem(source);
   const blockedCandidates = libraryItems.flatMap(({ library, items }) => items
-    .map((item) => normalizeItem(toScannedItem(item, library.name)))
+    .map((item) => normalizeItem(toScannedItem(item, library.name, api.URI)))
     .filter((candidate) => isCandidatePair(normalizedSource, candidate)));
   const copies = blockedCandidates
     .map((item) => ({ item, result: matchNormalizedItems(normalizedSource, item) }))

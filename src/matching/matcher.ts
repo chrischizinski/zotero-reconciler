@@ -1,3 +1,4 @@
+import { areLinked } from "./links.js";
 import { normalizeItem } from "./normalize.js";
 import { CANONICAL_TYPE_RANK } from "./types.js";
 import type { MatchEvidence, MatchResult, NormalizedItem, ScannedItem, TitleRelation, TypeRelation } from "./types.js";
@@ -8,14 +9,25 @@ const RELATED_TYPE_PAIRS = new Set([
   "book|thesis"
 ]);
 
-export function matchItems(leftInput: ScannedItem, rightInput: ScannedItem): MatchResult {
-  return matchNormalizedItems(normalizeItem(leftInput), normalizeItem(rightInput));
+export interface MatchOptions {
+  /** Skip Tier 0 so the bibliographic rules alone decide; used to audit the matcher against Zotero's links. */
+  ignoreLinkedItems?: boolean;
 }
 
-export function matchNormalizedItems(left: NormalizedItem, right: NormalizedItem): MatchResult {
+export function matchItems(leftInput: ScannedItem, rightInput: ScannedItem, options: MatchOptions = {}): MatchResult {
+  return matchNormalizedItems(normalizeItem(leftInput), normalizeItem(rightInput), options);
+}
+
+export function matchNormalizedItems(left: NormalizedItem, right: NormalizedItem, options: MatchOptions = {}): MatchResult {
   const titleRelation = compareTitles(left, right);
   const typeRelation = compareTypes(left.itemType, right.itemType);
   const evidence: MatchEvidence[] = [];
+
+  // Tier 0 (§8.0): Zotero itself recorded that one record was copied from the other. That is a
+  // user action, not an inference, so it outranks every denial rule including D6.
+  if (!options.ignoreLinkedItems && areLinked(left, right)) {
+    return result("match", "exact", [{ rule: "Tier 0", detail: "Zotero linked items (owl:sameAs): one record was copied from the other." }], titleRelation, typeRelation);
+  }
 
   if (typeRelation === "incompatible") {
     return result("no-match", "none", [{ rule: "D6", detail: "Item types are incompatible." }], titleRelation, typeRelation);

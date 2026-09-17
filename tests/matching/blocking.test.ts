@@ -24,4 +24,14 @@ describe("blocking (§8.5)", () => {
     expect(sortPairs(candidatePairs(items))).toEqual(sortPairs(expected));
     expect(expected).toEqual([[0, 1], [0, 2], [4, 5]]);
   });
+
+  it("puts a Zotero-linked pair in a block even when nothing bibliographic is shared (Tier 0 must not be filtered out before matching)", () => {
+    const original = item("A", { title: "Mallard harvest", date: "2024" });
+    const copy: ScannedItem = { ...item("B", { title: "Unrelated", date: "1990" }, [{ lastName: "Zed", firstName: "Q" }]), ref: { libraryID: 2, libraryName: "G", itemKey: "B", version: 1 }, linkedItems: [{ libraryID: 1, itemKey: "A" }] };
+    const stranger = item("C", { title: "Unrelated", date: "1990" }, [{ lastName: "Zed", firstName: "Q" }]);
+    const items = [original, copy, stranger].map(normalizeItem);
+    expect(isCandidatePair(items[0]!, items[1]!)).toBe(true);
+    expect(isCandidatePair(items[0]!, items[2]!)).toBe(false);
+    expect(candidatePairs(items).sort()).toEqual([[0, 1], [1, 2]]);
+  });
 });
