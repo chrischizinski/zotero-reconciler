@@ -35,7 +35,9 @@ metadata copy (My Library 4,060 items, 7 groups). Pref
 - 306/557 flagged is high. `similar-title` (title substitution + shared author) fires on
   clearly different papers by the same author — e.g. one work drew six near-misses. Recall is
   the point here, but the noise makes the warnings easy to ignore. Candidate tuning: cap the
-  substitution ratio, or rank/collapse same-author hits. Not changed yet.
+  substitution ratio, or rank/collapse same-author hits. **Done same day:** `similar-title`
+  now also needs Jaccard ≥ 0.5 on content words or ≤ 2 differing words; live re-run
+  flagged 62 of 557 (was 306).
 - Zotero auto-updated 10.0.2 → 10.0.3 overnight and left the proxy-installed plugin
   `appDisabled` in extensions.json; deleting `addonStartup.json.lz4` and restarting fixed it.
 - `bootstrap startup` fired twice after that re-enable (ADDON_ENABLE then APP_STARTUP);
