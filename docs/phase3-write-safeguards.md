@@ -225,7 +225,7 @@ original (rewrite of that one line is acceptable; the file is small).
 |---|---|---|
 | `src/write/writeApi.ts` | done | `WriteAPI`: 7 methods, no `setField`/`erase` |
 | `src/write/importPlan.ts` | done | build / withDecisions / confirmPlan; defaults per §5; rows carry `itemType`/`year` for the preview |
-| `src/write/recallCheck.ts` | done | shared-identifier → same-title → similar-title (needs shared author) → same-opening-words |
+| `src/write/recallCheck.ts` | done | shared-identifier → same-title → similar-title (shared author AND title overlap: Jaccard ≥ 0.5 or ≤ 2 differing words) → same-opening-words |
 | `src/write/importCandidates.ts` | done | missing works → recall check with widened blocks (identifier, first 3 title words, any creator key, no year filter) → `candidates` + `alreadyPresent` |
 | `src/write/importPreviewModel.ts` | done | `previewModel` (rows, warnings, disabled already-present rows) and `applyPreview` (Cancel → no plan; confirm → decisions + `confirmedAt`) |
 | `src/write/importExecutor.ts` | done | invariants 2, 4, 5, 7, 9 tested against a recording fake |
@@ -234,6 +234,12 @@ original (rewrite of that one line is acceptable; the file is small).
 | `src/zotero/importCommand.ts` | live-tested 2026-09-18 | `run()` = SCAN→…→LOG in order; log line written before the result window (invariant 8); `undoLast()` = confirm → `trashItems(createdRefs)` → undo entry → `markUndone`; `busy` guard |
 | `src/plugin/importPreview.xhtml` | live-tested 2026-09-18 | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
 | pref gate | done | `extensions.zotero-library-reconciler.enableImport` (global branch) must be `true` at startup or the command is never constructed or registered; default absent ⇒ off |
+
+Slice 3 (queued 2026-09-18, scale): the executor runs one DB transaction per row, sequentially,
+with no progress window and no cancel. Zotero's own drag-copy chunks 100 items per transaction
+(`collectionTree.js`, `forEachChunkAsync`), batching notifier events. Plan: 25 rows per
+transaction with row-by-row retry of a failed chunk (keeps §40 semantics), `Zotero.ProgressWindow`
+with cancel between chunks, preview soft-cap warning above ~250 ticked rows.
 
 Deferred from §7: the undo does not un-tick items edited since import (local `version` does not
 move for unsynced edits, so it cannot be detected reliably); everything the session created is

@@ -290,3 +290,7 @@ Still open from the review (not changed):
 - Undo verified: trash + undo entry + undoneAt.
 - Dev profile still has enableImport=true; trashed test items remain in dev trash.
 - Open: similar-title near-miss noise (306/557 flagged); runtime.startup re-entry guard.
+- similar-title near-miss now needs title overlap (Jaccard ≥ 0.5 or ≤ 2 differing words) as
+  well as a shared author; fixture from the live Post et al. example. 112 tests.
+- Slice 3 queued: chunked transactions (25/row-retry), progress window + cancel between
+  chunks, preview soft-cap ~250. See docs/phase3-write-safeguards.md §10.1.

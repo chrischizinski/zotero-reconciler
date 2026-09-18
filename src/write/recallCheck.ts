@@ -27,6 +27,10 @@ export interface RecallCheck {
 
 const IDENTIFIER_KEYS: (keyof NormalizedItem["identifiers"])[] = ["doi", "isbn13", "pmid", "pmcid", "arxiv"];
 const OPENING_WORDS = 3;
+/** Jaccard overlap of content words for `similar-title`; below this, same-author papers are just different papers. */
+const SIMILAR_TITLE_OVERLAP = 0.5;
+/** Or at most this many words differ in total (a typo or one swapped word), whatever the overlap. */
+const SIMILAR_TITLE_MAX_DIFFERING_WORDS = 2;
 
 export function recallCheck(candidate: NormalizedItem, myLibrary: readonly NormalizedItem[]): RecallCheck {
   const nearMisses: NearMiss[] = [];
@@ -48,10 +52,22 @@ const REASON_RANK: Record<NearMissReason, number> = { "shared-identifier": 0, "s
 function nearMissReason(candidate: NormalizedItem, mine: NormalizedItem, result: MatchResult): NearMissReason | undefined {
   if (IDENTIFIER_KEYS.some((key) => candidate.identifiers[key] && candidate.identifiers[key] === mine.identifiers[key])) return "shared-identifier";
   if (result.titleRelation === "equivalent" || result.titleRelation === "addition-only") return "same-title";
-  // A substituted title word plus the same year alone would flag every same-year paper; require an author.
-  if (result.titleRelation === "substitution" && sharesCreator(candidate, mine)) return "similar-title";
+  // "substitution" is anything not equivalent or prefix, so alone it names every other paper by the
+  // same author (live 2026-09-18: 306 of 557 rows flagged, one work drew six unrelated same-author
+  // hits). Require the titles to actually overlap, plus a shared author.
+  if (result.titleRelation === "substitution" && sharesCreator(candidate, mine) && titlesOverlap(candidate, mine)) return "similar-title";
   if (sameOpeningWords(candidate, mine) && (sharesCreator(candidate, mine) || sameYearWindow(candidate, mine))) return "same-opening-words";
   return undefined;
+}
+
+function titlesOverlap(left: NormalizedItem, right: NormalizedItem): boolean {
+  const leftWords = new Set(left.titleWords);
+  const rightWords = new Set(right.titleWords);
+  const shared = [...leftWords].filter((word) => rightWords.has(word)).length;
+  const union = leftWords.size + rightWords.size - shared;
+  if (union === 0) return false;
+  const differing = union - shared;
+  return differing <= SIMILAR_TITLE_MAX_DIFFERING_WORDS || shared / union >= SIMILAR_TITLE_OVERLAP;
 }
 
 function sharesCreator(left: NormalizedItem, right: NormalizedItem): boolean {

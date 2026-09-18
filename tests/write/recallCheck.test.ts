@@ -55,6 +55,18 @@ describe("recall re-check before import (§48.1) — the §47 pairs the precisio
     expect(byKey.Y).toMatchObject({ reason: "same-title", evidence: expect.stringMatching(/years differ/i) });
   });
 
+  it("does not flag a different paper by the same author (live 2026-09-18: every same-author title was a 'similar-title' near-miss)", () => {
+    const candidate = item(GROUP, "G", { fields: { title: "Resilient recreational fisheries or prone to collapse? A decade of research on the science and management of recreational fisheries", date: "2013" }, creators: [{ lastName: "Post", firstName: "J" }] });
+    const mine = [
+      item(MY, "UNRELATED", { fields: { title: "Linking angling catch rates and fish learning under catch-and-release regulations", date: "2006" }, creators: [{ lastName: "Post", firstName: "J" }] }),
+      item(MY, "COLLAPSE", { fields: { title: "Canada's recreational fisheries: the invisible collapse?", date: "2002" }, creators: [{ lastName: "Post", firstName: "J" }] }),
+      // Real overlap: a reworded subtitle keeps most content words → still a near-miss.
+      item(MY, "REWORDED", { fields: { title: "Resilient recreational fisheries or prone to collapse? Research on the science and management of recreational fisheries", date: "2013" }, creators: [{ lastName: "Post", firstName: "J" }] })
+    ];
+    const result = check(candidate, mine);
+    expect(result.nearMisses.map((miss) => [miss.item.ref.itemKey, miss.reason])).toEqual([["REWORDED", "similar-title"]]);
+  });
+
   it("reports 'already present' and no near-misses when the precision rules now match (index was stale)", () => {
     const result = check(item(GROUP, "G"), [item(MY, "M")]);
     expect(result.alreadyPresent?.ref.itemKey).toBe("M");
