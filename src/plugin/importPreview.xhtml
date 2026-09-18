@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<!--
+  Phase 3 import preview (PREVIEW / CONFIRM, §25). Modal. Receives { model, result } via
+  window.arguments[0]: renders `model` (PreviewModel) and writes the user's answer into
+  `result` (PreviewResult) before closing. It cannot add rows: only keys the model supplied
+  can be ticked, and closing the window any other way leaves result.confirmed = false.
+-->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Add Missing Items to My Library"
+        width="820" height="640"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <html:style><![CDATA[
+    #rows { flex: 1; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
+    .row { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--fill-quinary, #e5e5e5); align-items: flex-start; }
+    .row.disabled { opacity: 0.55; }
+    .row input { margin-top: 3px; }
+    .title { font-weight: 600; }
+    .detail { color: var(--fill-secondary, #555); font-size: 0.92em; }
+    .warning { color: #8a4b00; font-size: 0.92em; margin-top: 2px; white-space: pre-wrap; }
+    #summary { white-space: pre-wrap; }
+  ]]></html:style>
+  <script><![CDATA[
+    const HTML_NS = "http://www.w3.org/1999/xhtml";
+    let args;
+
+    function init() {
+      args = window.arguments && window.arguments[0];
+      if (!args || !args.model) { window.close(); return; }
+      const { model } = args;
+      document.getElementById("summary").textContent = model.summary;
+      document.getElementById("copy-tags").checked = !!model.copyTags;
+      const container = document.getElementById("rows");
+      for (const row of model.rows) container.appendChild(renderRow(row));
+      updateCount();
+    }
+
+    function renderRow(row) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = row.disabled ? "row disabled" : "row";
+      const box = document.createElementNS(HTML_NS, "input");
+      box.type = "checkbox";
+      box.dataset.key = row.key;
+      box.checked = !!row.checked && !row.disabled;
+      box.disabled = !!row.disabled;
+      box.addEventListener("change", updateCount);
+      div.appendChild(box);
+      const text = document.createElementNS(HTML_NS, "div");
+      text.style.flex = "1";
+      text.appendChild(line("title", row.title));
+      text.appendChild(line("detail", row.detail));
+      for (const warning of row.warnings) text.appendChild(line("warning", warning));
+      div.appendChild(text);
+      return div;
+    }
+
+    function line(className, content) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = className;
+      div.textContent = content;
+      return div;
+    }
+
+    function boxes() {
+      return Array.from(document.querySelectorAll("#rows input[type=checkbox]"));
+    }
+
+    function updateCount() {
+      const ticked = boxes().filter((box) => box.checked).length;
+      document.getElementById("import").label = ticked === 0 ? "Import" : `Import ${ticked} Item${ticked === 1 ? "" : "s"}`;
+      document.getElementById("import").disabled = ticked === 0;
+    }
+
+    function setAll(checked) {
+      for (const box of boxes()) if (!box.disabled) box.checked = checked;
+      updateCount();
+    }
+
+    function confirmImport() {
+      args.result.checkedKeys = boxes().filter((box) => box.checked).map((box) => box.dataset.key);
+      args.result.copyTags = document.getElementById("copy-tags").checked;
+      args.result.confirmed = true;
+      window.close();
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 12px; gap: 8px;">
+    <html:div id="summary"/>
+    <hbox style="gap: 8px;">
+      <button label="Tick All" oncommand="setAll(true)"/>
+      <button label="Untick All" oncommand="setAll(false)"/>
+    </hbox>
+    <html:div id="rows"/>
+    <hbox align="center" style="gap: 12px;">
+      <checkbox id="copy-tags" label="Also copy tags (tags are library-specific; off by default)"/>
+      <spacer flex="1"/>
+      <button label="Cancel" oncommand="window.close()"/>
+      <button id="import" label="Import" default="true" oncommand="confirmImport()"/>
+    </hbox>
+  </vbox>
+</window>

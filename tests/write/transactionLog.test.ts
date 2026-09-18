@@ -17,7 +17,7 @@ describe("import plan (PROPOSE / PREVIEW / CONFIRM as data)", () => {
     expect(plan.rows.map((row) => row.decision)).toEqual(["import", "skip"]);
     expect(plan.copyTags).toBe(false);
     expect(plan.confirmedAt).toBeUndefined();
-    expect(plan.rows[0]?.source).toEqual({ libraryID: 2, libraryName: "creel", itemKey: "A", version: 5, title: "Paper A" });
+    expect(plan.rows[0]?.source).toEqual({ libraryID: 2, libraryName: "creel", itemKey: "A", version: 5, title: "Paper A", itemType: "journalArticle", year: "2024" });
   });
 
   it("applies the user's choices and stamps confirmation separately from creation", () => {

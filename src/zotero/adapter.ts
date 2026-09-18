@@ -65,6 +65,9 @@ export interface LibraryAuditResult {
   audit: CrossLibraryAudit;
   /** The libraries scanned, with their versions at scan time, for snapshot staleness (§29). */
   libraries: readonly LibraryVersion[];
+  /** Every scanned item, so Phase 3's recall re-check can look at My Library again without a second scan. */
+  items: readonly ScannedItem[];
+  myLibraryID: number;
 }
 
 export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditResult> {
@@ -78,7 +81,9 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditRe
   const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name, api.URI)));
   return {
     audit: auditCrossLibraries(items, myLibraryID),
-    libraries: libraries.map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 }))
+    libraries: libraries.map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 })),
+    items,
+    myLibraryID
   };
 }
 

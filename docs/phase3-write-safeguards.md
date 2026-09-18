@@ -219,19 +219,26 @@ original (rewrite of that one line is acceptable; the file is small).
   profile's** My Library only, with metadata-only sync (already the dev setup), then
   confirm in the real client's Duplicate Items view that nothing new appears.
 
-## 10.1 Implementation status (2026-09-17, slice 1)
+## 10.1 Implementation status (2026-09-18, slice 2)
 
 | Module | State | Notes |
 |---|---|---|
 | `src/write/writeApi.ts` | done | `WriteAPI`: 7 methods, no `setField`/`erase` |
-| `src/write/importPlan.ts` | done | build / withDecisions / confirmPlan; defaults per §5 |
+| `src/write/importPlan.ts` | done | build / withDecisions / confirmPlan; defaults per §5; rows carry `itemType`/`year` for the preview |
 | `src/write/recallCheck.ts` | done | shared-identifier → same-title → similar-title (needs shared author) → same-opening-words |
+| `src/write/importCandidates.ts` | done | missing works → recall check with widened blocks (identifier, first 3 title words, any creator key, no year filter) → `candidates` + `alreadyPresent` |
+| `src/write/importPreviewModel.ts` | done | `previewModel` (rows, warnings, disabled already-present rows) and `applyPreview` (Cancel → no plan; confirm → decisions + `confirmedAt`) |
 | `src/write/importExecutor.ts` | done | invariants 2, 4, 5, 7, 9 tested against a recording fake |
 | `src/write/transactionLog.ts`, `src/zotero/transactionStore.ts` | done | JSONL, lenient read, `markUndone` |
-| `src/zotero/writeAdapter.ts` | written, **not wired, not live-tested** | the only mutating file |
-| import preview window, menu command, undo command, dev-only pref gate | not started | slice 2 |
+| `src/zotero/writeAdapter.ts` | wired, **not live-tested** | the only mutating file |
+| `src/zotero/importCommand.ts` | done, not live-tested | `run()` = SCAN→…→LOG in order; log line written before the result window (invariant 8); `undoLast()` = confirm → `trashItems(createdRefs)` → undo entry → `markUndone`; `busy` guard |
+| `src/plugin/importPreview.xhtml` | done, not live-tested | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
+| pref gate | done | `extensions.zotero-library-reconciler.enableImport` (global branch) must be `true` at startup or the command is never constructed or registered; default absent ⇒ off |
 
-Nothing in `src/plugin/` imports the write engine; the built bundle contains no write path.
+Deferred from §7: the undo does not un-tick items edited since import (local `version` does not
+move for unsynced edits, so it cannot be detected reliably); everything the session created is
+trashed, and Zotero's trash keeps the edits. The empty session collection is left in place
+(`WriteAPI` deliberately has no collection delete).
 
 ## 11. Decisions needed before coding
 

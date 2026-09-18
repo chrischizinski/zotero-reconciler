@@ -13,7 +13,7 @@ build:
 
 package:
     just build
-    cd dist && zip -rFS zotero-library-reconciler.xpi bootstrap.js manifest.json chrome.manifest chrome/content/runtime.js chrome/content/report.xhtml
+    cd dist && zip -rFS zotero-library-reconciler.xpi bootstrap.js manifest.json chrome.manifest chrome/content/runtime.js chrome/content/*.xhtml
 
 test:
     npm test

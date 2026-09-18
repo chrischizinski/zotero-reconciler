@@ -253,3 +253,29 @@ Still open from the review (not changed):
 - Next (slice 2): import preview window (XHTML, per-row checkboxes + near-miss evidence),
   "Add Selected to My Library" command on the missing-works list, session undo command,
   gate behind pref `extensions.zotero-library-reconciler.enableImport` default false.
+
+## 2026-09-18 Phase 3 slice 2 — preview window, import + undo commands, pref gate
+
+- `src/write/importCandidates.ts`: missing works → recall check over My Library with widened
+  blocking (identifier / first 3 title words / any creator, no year filter) → `candidates`
+  (with near-misses) + `alreadyPresent` (stale index; shown disabled, never importable).
+- `src/write/importPreviewModel.ts`: `previewModel` / `applyPreview`. Plan rows now carry
+  `itemType` + `year` (importPlan.ts) for the row detail line.
+- `src/plugin/importPreview.xhtml`: modal, `{ model, result }` via window.arguments; checkbox
+  per row, near-miss warnings, Tick/Untick All, copy-tags checkbox off, Import N / Cancel.
+- `src/zotero/importCommand.ts`: menu "Add Missing Items to My Library…" + "Undo Last Import
+  Session…" on `zotero-itemmenu` (same per-window Map pattern). `run()` fresh audit →
+  candidates → plan → preview → confirm → executor → log → refreshIndex → report window.
+  `undoLast()` confirm (Cancel default) → trash created refs → undo entry → markUndone.
+- `adapter.auditLibraries` now also returns `items` + `myLibraryID`; `FindCopiesCommand.
+  refreshIndex()` split out of `runAudit()` so the import can refresh without a report window.
+- `runtime.ts`: `Zotero.Prefs.get("extensions.zotero-library-reconciler.enableImport", true)
+  === true` at startup constructs + registers ImportCommand; otherwise nothing write-related
+  is registered. Build copies `src/plugin/*.xhtml`; package zips `chrome/content/*.xhtml`.
+- 111 tests, tsc clean, built. NOT live-tested. Dev profile syncs metadata to the real
+  account — disable auto-sync (or accept that a test import reaches the real My Library,
+  trash-recoverable) before the first live write.
+- Next: set `user_pref("extensions.zotero-library-reconciler.enableImport", true);` in the
+  dev profile prefs.js (Zotero closed), launch, run the command on 1–2 ticked rows, inspect
+  the created items (collection, owl:sameAs link, fields), then Undo, then check
+  transactions.jsonl. Then Zotero's own Duplicate Items view.

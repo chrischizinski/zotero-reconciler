@@ -14,6 +14,9 @@ export interface ImportSource {
   /** Item version at plan time; the executor skips the row if it moved (§40). */
   version: number;
   title: string;
+  itemType: string;
+  /** First four characters of Zotero's multipart date, when they are a year. */
+  year?: string;
 }
 
 export type RowDecision = "import" | "skip";
@@ -50,17 +53,22 @@ export function buildImportPlan(
     targetLibraryID,
     copyTags: options.copyTags ?? false,
     createdAt: now.toISOString(),
-    rows: candidates.map(({ item, nearMisses }) => ({
-      source: {
-        libraryID: item.ref.libraryID,
-        libraryName: item.ref.libraryName,
-        itemKey: item.ref.itemKey,
-        version: item.ref.version,
-        title: item.fields.title ?? ""
-      },
-      nearMisses,
-      decision: nearMisses.length === 0 ? "import" : "skip"
-    }))
+    rows: candidates.map(({ item, nearMisses }) => {
+      const year = yearOf(item);
+      return {
+        source: {
+          libraryID: item.ref.libraryID,
+          libraryName: item.ref.libraryName,
+          itemKey: item.ref.itemKey,
+          version: item.ref.version,
+          title: item.fields.title ?? "",
+          itemType: item.itemType,
+          ...(year ? { year } : {})
+        },
+        nearMisses,
+        decision: nearMisses.length === 0 ? "import" : "skip"
+      };
+    })
   };
 }
 
@@ -83,4 +91,9 @@ export function rowKey(row: ImportRow): string {
 
 export function rowsToImport(plan: ImportPlan): readonly ImportRow[] {
   return plan.rows.filter((row) => row.decision === "import");
+}
+
+export function yearOf(item: ScannedItem): string | undefined {
+  const year = item.fields.date?.slice(0, 4);
+  return year && /^\d{4}$/.test(year) ? year : undefined;
 }

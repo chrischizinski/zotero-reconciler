@@ -104,25 +104,31 @@ export class FindCopiesCommand {
 
   async runAudit(): Promise<void> {
     try {
-      const { audit, libraries } = await auditLibraries(this.zotero);
-      const snapshot = createSnapshot(audit, libraries, this.now());
-      this.lookup = new WorkLookup(snapshot);
-      this.onIndexChanged();
-      let persistence = "Index not persisted (no store configured).";
-      if (this.store) {
-        try {
-          await this.store.save(snapshot);
-          persistence = `Index of ${snapshot.works.length} works saved to ${this.store.location}.`;
-        } catch (error) {
-          this.zotero.debug(`[Zotero Library Reconciler] Index save failed: ${String(error)}`);
-          persistence = "Index could not be saved; see Zotero's debug output.";
-        }
-      }
+      const { audit, persistence } = await this.refreshIndex();
       this.show(`${renderAudit(audit)}\n\n${persistence}`, "Cross-Library Audit");
     } catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Audit failed: ${String(error)}`);
       this.show("Cross-library audit could not complete. See Zotero's debug output for details.");
     }
+  }
+
+  /** Rescans, rebuilds the index and persists it; the import command calls this after a write so the "Also in" column stops being stale. */
+  async refreshIndex(): Promise<{ audit: CrossLibraryAudit; persistence: string }> {
+    const { audit, libraries } = await auditLibraries(this.zotero);
+    const snapshot = createSnapshot(audit, libraries, this.now());
+    this.lookup = new WorkLookup(snapshot);
+    this.onIndexChanged();
+    let persistence = "Index not persisted (no store configured).";
+    if (this.store) {
+      try {
+        await this.store.save(snapshot);
+        persistence = `Index of ${snapshot.works.length} works saved to ${this.store.location}.`;
+      } catch (error) {
+        this.zotero.debug(`[Zotero Library Reconciler] Index save failed: ${String(error)}`);
+        persistence = "Index could not be saved; see Zotero's debug output.";
+      }
+    }
+    return { audit, persistence };
   }
 
   async run(): Promise<void> {

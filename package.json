@@ -6,7 +6,7 @@
   "type": "module",
   "description": "Read-only cross-library reconciliation tools for Zotero 10.",
   "scripts": {
-    "build": "mkdir -p dist/chrome/content && esbuild src/plugin/runtime.ts --bundle --format=iife --platform=browser --target=firefox115 --outfile=dist/chrome/content/runtime.js && cp src/plugin/bootstrap.js dist/bootstrap.js && cp src/plugin/report.xhtml dist/chrome/content/report.xhtml && cp manifest.json chrome.manifest dist/",
+    "build": "mkdir -p dist/chrome/content && esbuild src/plugin/runtime.ts --bundle --format=iife --platform=browser --target=firefox115 --outfile=dist/chrome/content/runtime.js && cp src/plugin/bootstrap.js dist/bootstrap.js && cp src/plugin/*.xhtml dist/chrome/content/ && cp manifest.json chrome.manifest dist/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
