@@ -299,3 +299,5 @@ Still open from the review (not changed):
   + totals, `importProgress.xhtml` (non-modal, Cancel), preview soft-cap 250 (second click).
   114 tests. Live test plan: Tick All → Import → expect warning; Untick All → tick ~30 →
   Import → progress window; Cancel mid-way → expect created 25 / cancelled 5; then Undo.
+- Slice 3 live: 30 rows in ~1.5 s, few transactions, undo of 30 verified. Cancel + chunk
+  retry only test-covered. Warning colours now light-dark(). Dev trash holds 32 test items.

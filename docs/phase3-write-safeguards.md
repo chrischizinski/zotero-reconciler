@@ -235,7 +235,7 @@ original (rewrite of that one line is acceptable; the file is small).
 | `src/plugin/importPreview.xhtml` | live-tested 2026-09-18 | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
 | pref gate | done | `extensions.zotero-library-reconciler.enableImport` (global branch) must be `true` at startup or the command is never constructed or registered; default absent ⇒ off |
 
-Slice 3 (2026-09-18, scale — built, not yet live-tested): `WriteAPI.copyItems` writes a chunk in
+Slice 3 (2026-09-18, scale — live-tested with 30 rows, see validation doc): `WriteAPI.copyItems` writes a chunk in
 one transaction (Zotero's own drag-copy uses 100 per transaction; ours is 25). The executor
 re-checks each row just before its own chunk, retries a failed chunk row by row so one bad row
 costs only itself, reports progress per chunk, and honours cancel between chunks (remaining

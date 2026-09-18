@@ -42,3 +42,18 @@ metadata copy (My Library 4,060 items, 7 groups). Pref
   `appDisabled` in extensions.json; deleting `addonStartup.json.lz4` and restarting fixed it.
 - `bootstrap startup` fired twice after that re-enable (ADDON_ENABLE then APP_STARTUP);
   registration is idempotent so no harm, but `runtime.startup()` has no re-entry guard.
+
+## Slice 3 live run (same day, 30 rows)
+
+- Preview: Tick All (557) → Import showed the large-session warning; Untick All → 30 clean
+  rows → Import 30 Items. Progress window appeared; session finished in ~1.5 s
+  (17:51:30 → 17:51:31), too fast to cancel at this size.
+- Result: `Created 30 items … skipped 0, failed 0.` Log entry written normally this time
+  (`appendOrCreate`).
+- DB: 30 new items, 30 `owl:sameAs` links, all in `Reconciler Imports / 2026-09-18 17:51`,
+  0 tags. Debug log shows a handful of DB transactions for the session, not 30: chunking live.
+- Undo: `Moved 30 imported items to the trash.` DB: 30 in `deletedItems`; log has the undo
+  entry with 30 refs and the import marked `undoneAt`.
+- Not exercised live: cancel between chunks (needs a session long enough to click), chunk
+  failure → row-by-row retry. Both covered by tests against the recording fake.
+- Dark-theme contrast of the amber warnings fixed with `light-dark()`.
