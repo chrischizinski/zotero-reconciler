@@ -219,7 +219,7 @@ original (rewrite of that one line is acceptable; the file is small).
   profile's** My Library only, with metadata-only sync (already the dev setup), then
   confirm in the real client's Duplicate Items view that nothing new appears.
 
-## 10.1 Implementation status (2026-09-18, slice 2)
+## 10.1 Implementation status (2026-09-18, slice 2 — live-validated, see docs/validation-phase3-2026-09-18.md)
 
 | Module | State | Notes |
 |---|---|---|
@@ -230,9 +230,9 @@ original (rewrite of that one line is acceptable; the file is small).
 | `src/write/importPreviewModel.ts` | done | `previewModel` (rows, warnings, disabled already-present rows) and `applyPreview` (Cancel → no plan; confirm → decisions + `confirmedAt`) |
 | `src/write/importExecutor.ts` | done | invariants 2, 4, 5, 7, 9 tested against a recording fake |
 | `src/write/transactionLog.ts`, `src/zotero/transactionStore.ts` | done | JSONL, lenient read, `markUndone` |
-| `src/zotero/writeAdapter.ts` | wired, **not live-tested** | the only mutating file |
-| `src/zotero/importCommand.ts` | done, not live-tested | `run()` = SCAN→…→LOG in order; log line written before the result window (invariant 8); `undoLast()` = confirm → `trashItems(createdRefs)` → undo entry → `markUndone`; `busy` guard |
-| `src/plugin/importPreview.xhtml` | done, not live-tested | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
+| `src/zotero/writeAdapter.ts` | live-tested 2026-09-18 | the only mutating file; copy + link + collection + trash all verified in the DB |
+| `src/zotero/importCommand.ts` | live-tested 2026-09-18 | `run()` = SCAN→…→LOG in order; log line written before the result window (invariant 8); `undoLast()` = confirm → `trashItems(createdRefs)` → undo entry → `markUndone`; `busy` guard |
+| `src/plugin/importPreview.xhtml` | live-tested 2026-09-18 | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
 | pref gate | done | `extensions.zotero-library-reconciler.enableImport` (global branch) must be `true` at startup or the command is never constructed or registered; default absent ⇒ off |
 
 Deferred from §7: the undo does not un-tick items edited since import (local `version` does not

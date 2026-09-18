@@ -74,7 +74,7 @@ describe("transaction log (§26) — the Phase 3 undo mechanism, since native un
       makeDirectory: async () => undefined,
       writeUTF8: async (path, text, options) => {
         writes.push(options?.mode ?? "overwrite");
-        files.set(path, options?.mode === "append" ? (files.get(path) ?? "") + text : text);
+        files.set(path, options?.mode === "appendOrCreate" ? (files.get(path) ?? "") + text : text);
       }
     };
     const store = TransactionStore.inDataDirectory(fs, "/data", (...parts) => parts.join("/"));
@@ -85,7 +85,7 @@ describe("transaction log (§26) — the Phase 3 undo mechanism, since native un
     const second: ImportLogEntry = { ...first, id: "imp-2" };
     await store.append(first);
     await store.append(second);
-    expect(writes).toEqual(["append", "append"]);
+    expect(writes).toEqual(["appendOrCreate", "appendOrCreate"]);
     expect(files.get(store.location)?.split("\n").filter(Boolean)).toHaveLength(2);
 
     await store.markUndone("imp-1", "2026-09-18T08:00:00.000Z");

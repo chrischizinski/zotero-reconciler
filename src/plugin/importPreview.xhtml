@@ -15,7 +15,8 @@
     <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
   </linkset>
   <html:style><![CDATA[
-    #rows { flex: 1; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
+    /* flex-basis 0 + min-height 0: the list must shrink to the space left, or it pushes the buttons off-screen. */
+    #rows { flex: 1 1 0; min-height: 0; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
     .row { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--fill-quinary, #e5e5e5); align-items: flex-start; }
     .row.disabled { opacity: 0.55; }
     .row input { margin-top: 3px; }
@@ -87,13 +88,13 @@
       window.close();
     }
   ]]></script>
-  <vbox flex="1" style="padding: 12px; gap: 8px;">
+  <vbox flex="1" style="padding: 12px; gap: 8px; min-height: 0;">
     <html:div id="summary"/>
     <hbox style="gap: 8px;">
       <button label="Tick All" oncommand="setAll(true)"/>
       <button label="Untick All" oncommand="setAll(false)"/>
     </hbox>
-    <html:div id="rows"/>
+    <html:div id="rows" flex="1"/>
     <hbox align="center" style="gap: 12px;">
       <checkbox id="copy-tags" label="Also copy tags (tags are library-specific; off by default)"/>
       <spacer flex="1"/>

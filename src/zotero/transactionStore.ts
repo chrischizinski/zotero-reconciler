@@ -3,7 +3,7 @@ import { parseLog, serializeLog, type ImportLogEntry, type LogEntry } from "../w
 /** The subset of Gecko's `IOUtils` the store needs; injected so tests need no filesystem. */
 export interface LogFileSystem {
   readUTF8(path: string): Promise<string>;
-  writeUTF8(path: string, text: string, options?: { mode?: "overwrite" | "append"; tmpPath?: string }): Promise<unknown>;
+  writeUTF8(path: string, text: string, options?: { mode?: "overwrite" | "appendOrCreate"; tmpPath?: string }): Promise<unknown>;
   makeDirectory(path: string, options?: { ignoreExisting?: boolean }): Promise<void>;
   exists(path: string): Promise<boolean>;
 }
@@ -27,7 +27,8 @@ export class TransactionStore {
 
   async append(entry: LogEntry): Promise<void> {
     await this.fs.makeDirectory(this.directory, { ignoreExisting: true });
-    await this.fs.writeUTF8(this.path, `${JSON.stringify(entry)}\n`, { mode: "append" });
+    // "append" fails with NS_ERROR_FILE_NOT_FOUND on a missing file (seen live 2026-09-18); "appendOrCreate" creates it.
+    await this.fs.writeUTF8(this.path, `${JSON.stringify(entry)}\n`, { mode: "appendOrCreate" });
   }
 
   /** Malformed lines are counted and skipped, never thrown: the log must stay readable after any single bad write. */

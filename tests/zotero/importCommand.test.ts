@@ -31,7 +31,7 @@ function harness(options: { preview?: (model: PreviewModel) => PreviewResult; co
     makeDirectory: async () => undefined,
     writeUTF8: async (path, text, opts) => {
       events.push(`log:${opts?.mode ?? "overwrite"}`);
-      files.set(path, opts?.mode === "append" ? (files.get(path) ?? "") + text : text);
+      files.set(path, opts?.mode === "appendOrCreate" ? (files.get(path) ?? "") + text : text);
     }
   };
   const store = TransactionStore.inDataDirectory(fs, "/data", (...parts) => parts.join("/"));
@@ -82,7 +82,7 @@ describe("Add Missing Items command — the only path to the write engine (§25 
     const { command, events, shown, logText } = harness({ preview: () => ({ confirmed: true, checkedKeys: ["2:G2"], copyTags: false }) });
     const outcome = await command.run();
     expect(outcome?.totals).toMatchObject({ created: 1, failed: 0 });
-    expect(events).toEqual(["preview", "collection", "copy:G2", "log:append", "refresh", "show:Add Missing Items"]);
+    expect(events).toEqual(["preview", "collection", "copy:G2", "log:appendOrCreate", "refresh", "show:Add Missing Items"]);
     expect(shown[0]?.text).toMatch(/^Created 1 item in My Library/);
     const entry = JSON.parse(logText().trim()) as ImportLogEntry;
     expect(entry.action).toBe("import");
@@ -125,7 +125,7 @@ describe("Undo Last Import Session — trash, never erase; log the undo; mark th
     const log = `${JSON.stringify(importEntry("imp-1"))}\n${JSON.stringify(importEntry("imp-2", true))}\n`;
     const { command, events, logText } = harness({ log, confirmUndo: true });
     await command.undoLast();
-    expect(events).toEqual(["confirm", "trash:NEWG1", "log:append", "log:overwrite", "refresh", "show:Undo Last Import"]);
+    expect(events).toEqual(["confirm", "trash:NEWG1", "log:appendOrCreate", "log:overwrite", "refresh", "show:Undo Last Import"]);
     const entries = logText().trim().split("\n").map((line) => JSON.parse(line) as { action: string; id: string; reverses?: string; undoneAt?: string });
     expect(entries.find((entry) => entry.action === "undo")?.reverses).toBe("imp-1");
     expect(entries.find((entry) => entry.id === "imp-1")?.undoneAt).toBe("2026-09-18T10:00:00.000Z");

@@ -279,3 +279,14 @@ Still open from the review (not changed):
   dev profile prefs.js (Zotero closed), launch, run the command on 1–2 ticked rows, inspect
   the created items (collection, owl:sameAs link, fields), then Undo, then check
   transactions.jsonl. Then Zotero's own Duplicate Items view.
+
+## 2026-09-18 first live write — import + undo verified (docs/validation-phase3-2026-09-18.md)
+
+- Zotero auto-updated to 10.0.3 and app-disabled the proxy plugin; fix = delete
+  `<profile>/addonStartup.json.lz4`, restart.
+- Import of 2 rows: items, collection, owl:sameAs, fields verified in DB; sources untouched.
+- Bug fixed: transaction log `IOUtils.writeUTF8` mode "append" → "appendOrCreate".
+- Preview XHTML sizing fixed (buttons were off-screen).
+- Undo verified: trash + undo entry + undoneAt.
+- Dev profile still has enableImport=true; trashed test items remain in dev trash.
+- Open: similar-title near-miss noise (306/557 flagged); runtime.startup re-entry guard.
