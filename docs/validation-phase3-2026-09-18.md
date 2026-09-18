@@ -57,3 +57,36 @@ metadata copy (My Library 4,060 items, 7 groups). Pref
 - Not exercised live: cancel between chunks (needs a session long enough to click), chunk
   failure → row-by-row retry. Both covered by tests against the recording fake.
 - Dark-theme contrast of the amber warnings fixed with `light-dark()`.
+
+## Large live run with Cancel (same day, 495 rows)
+
+Purpose: exercise cancel-between-chunks and the >250 soft cap for real; the 30-row run was
+too fast to click.
+
+- Preview: Tick All → 495 ticked (the 62 flagged rows stay unticked). Import → amber
+  large-session warning → second click → progress window. Cancel clicked mid-run.
+- Result dialog: `Created 417 items … skipped 8, failed 0, cancelled 70 (not attempted).`
+  417 + 8 + 70 = 495; 425 attempted = 17 × 25, so Cancel took effect at a chunk boundary
+  and never inside a transaction (§40 / executor design).
+- Log entry `2026-09-18T20:41:23.870Z-15fd`: 417 `created` rows, 8
+  `already-present` rows, 70 rows `cancelled: the session was cancelled before this row;
+  nothing was written.`; totals `{created:417, skippedExisting:8, failed:0, cancelled:70}`.
+- DB cross-check of the 417 created keys from the log: 417 present, all in
+  `Reconciler Imports / 2026-09-18 20:41`, all carry `owl:sameAs` → source, 0 tags,
+  0 attachments, 0 notes, none in trash, every one has a title. Two have no creators —
+  their sources have none either (a report and a webpage).
+- Invariant 3 (sources untouched): all 417 source versions (libs 2/5/6 = 44/277/96) equal
+  the versions recorded in the log; none missing.
+- The 8 `already-present` skips are live My Library items that already carry an
+  `owl:sameAs` link to the group source but were rule-denied at match time (Tier 0 cannot
+  override a denial, §8.0a), so the work showed as missing. The executor's pre-write link
+  check is the second line of defence and held. These are the stale links reported by the
+  earlier audit; they stay a user decision.
+- Prior-run items in the trash (32, also linked to their sources) did not block re-import:
+  Zotero's `getLinkedItem` skips trashed targets, matching the scanner's `includeDeleted=false`.
+- Undo: `Moved 417 imported items to the trash.` DB: 449 in trash (32 + 417); the 8 skipped
+  items untouched; undo entry `…-c6a5` reverses `…-15fd`; import marked `undoneAt`.
+- Trash emptied by the user afterwards (0 items). Three empty session subcollections remain
+  under `Reconciler Imports` (16:49, 17:51, 20:41) — WriteAPI has no collection delete by
+  design.
+- Still not exercised live: chunk failure → row-by-row retry (`failed 0`). Test-only.

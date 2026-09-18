@@ -301,3 +301,23 @@ Still open from the review (not changed):
   Import → progress window; Cancel mid-way → expect created 25 / cancelled 5; then Undo.
 - Slice 3 live: 30 rows in ~1.5 s, few transactions, undo of 30 verified. Cancel + chunk
   retry only test-covered. Warning colours now light-dark(). Dev trash holds 32 test items.
+
+## 2026-09-18 large live run — Cancel + soft cap verified (Phase 3 live validation complete)
+
+- 495-row session (Tick All; 62 flagged stay unticked). Soft-cap warning → second click →
+  Cancel mid-run. Result 417 created / 8 already-present / 0 failed / 70 cancelled; 425
+  attempted = 17 × 25, so Cancel landed at a chunk boundary. DB cross-check of all 417 keys:
+  in session collection, sameAs → source, 0 tags/attachments/notes; all 417 source versions
+  unchanged. Undo → 449 in trash; user emptied trash (0). Details in
+  docs/validation-phase3-2026-09-18.md.
+- The 8 `already-present` skips = live My Library items with a stale sameAs link that the
+  matcher rule-denied (Tier 0 corroborate-only). Second line of defence held. User decision
+  pending on those stale links.
+- Only chunk-failure → row-by-row retry remains test-only.
+- Dev profile state: trash empty; three empty session subcollections under
+  `Reconciler Imports`; Zotero 10.0.3 running as `reconciler-dev` (auto-sync OFF, never Sync).
+- Next: Phase 4 design session (field-level reconciliation, per-field transaction log + undo;
+  design.md §11–§12, §25–§27; docs/phase3-write-safeguards.md; reuse WriteAPI pattern —
+  only writeAdapter.ts mutates). Open small items: `runtime.startup()` re-entry guard;
+  Tools-menu placement for import/undo; deprecated `disableIn`/`defaultIn` column props →
+  `enabledTreeIDs`.
