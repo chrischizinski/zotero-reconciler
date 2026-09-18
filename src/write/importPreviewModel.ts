@@ -26,7 +26,11 @@ export interface PreviewModel {
   summary: string;
   rows: readonly PreviewRow[];
   copyTags: boolean;
+  /** Above this many ticked rows the window warns and asks for a second click: several smaller sessions are easier to review and undo. */
+  largeSessionThreshold: number;
 }
+
+export const LARGE_SESSION_THRESHOLD = 250;
 
 /** What the window returns. `confirmed: false` (Cancel or window closed) writes nothing. */
 export interface PreviewResult {
@@ -59,7 +63,8 @@ export function previewModel(plan: ImportPlan, alreadyPresent: readonly AlreadyP
     targetName,
     summary: summarize(plan.rows.length, flagged, alreadyPresent.length),
     rows,
-    copyTags: plan.copyTags
+    copyTags: plan.copyTags,
+    largeSessionThreshold: LARGE_SESSION_THRESHOLD
   };
 }
 

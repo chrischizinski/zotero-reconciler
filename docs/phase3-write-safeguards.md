@@ -235,11 +235,12 @@ original (rewrite of that one line is acceptable; the file is small).
 | `src/plugin/importPreview.xhtml` | live-tested 2026-09-18 | modal; only model-supplied keys can be ticked; Cancel/close ⇒ `confirmed: false` |
 | pref gate | done | `extensions.zotero-library-reconciler.enableImport` (global branch) must be `true` at startup or the command is never constructed or registered; default absent ⇒ off |
 
-Slice 3 (queued 2026-09-18, scale): the executor runs one DB transaction per row, sequentially,
-with no progress window and no cancel. Zotero's own drag-copy chunks 100 items per transaction
-(`collectionTree.js`, `forEachChunkAsync`), batching notifier events. Plan: 25 rows per
-transaction with row-by-row retry of a failed chunk (keeps §40 semantics), `Zotero.ProgressWindow`
-with cancel between chunks, preview soft-cap warning above ~250 ticked rows.
+Slice 3 (2026-09-18, scale — built, not yet live-tested): `WriteAPI.copyItems` writes a chunk in
+one transaction (Zotero's own drag-copy uses 100 per transaction; ours is 25). The executor
+re-checks each row just before its own chunk, retries a failed chunk row by row so one bad row
+costs only itself, reports progress per chunk, and honours cancel between chunks (remaining
+rows → `cancelled`, logged as skipped). `importProgress.xhtml` is a non-modal window with a
+Cancel button. The preview warns above 250 ticked rows and needs a second click.
 
 Deferred from §7: the undo does not un-tick items edited since import (local `version` does not
 move for unsynced edits, so it cannot be detected reliably); everything the session created is

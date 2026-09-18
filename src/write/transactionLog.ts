@@ -48,6 +48,7 @@ export function importLogEntry(outcome: ImportOutcome, id: string): ImportLogEnt
       source: { libraryID: row.row.source.libraryID, itemKey: row.row.source.itemKey, version: row.row.source.version, title: row.row.source.title },
       ...(row.status === "created" ? { created: row.created } : {}),
       ...(row.status === "skipped" ? { skipped: `${row.reason}: ${row.detail}` } : {}),
+      ...(row.status === "cancelled" ? { skipped: "cancelled: the session was cancelled before this row; nothing was written." } : {}),
       ...(row.status === "failed" ? { failed: row.error } : {})
     })),
     totals: outcome.totals

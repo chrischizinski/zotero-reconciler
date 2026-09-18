@@ -294,3 +294,8 @@ Still open from the review (not changed):
   well as a shared author; fixture from the live Post et al. example. 112 tests.
 - Slice 3 queued: chunked transactions (25/row-retry), progress window + cancel between
   chunks, preview soft-cap ~250. See docs/phase3-write-safeguards.md §10.1.
+- Slice 3 built (not live-tested): `copyItems` chunk transaction (25), row-by-row retry on
+  chunk failure, per-chunk §40 re-check, `onProgress`/`shouldCancel`, `cancelled` row status
+  + totals, `importProgress.xhtml` (non-modal, Cancel), preview soft-cap 250 (second click).
+  114 tests. Live test plan: Tick All → Import → expect warning; Untick All → tick ~30 →
+  Import → progress window; Cancel mid-way → expect created 25 / cancelled 5; then Undo.

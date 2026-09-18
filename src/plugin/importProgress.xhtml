@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<!--
+  Phase 3 import progress. Non-modal. Receives { controller } via window.arguments[0]:
+  the window sets controller.update(done, total) for the executor to call after each chunk,
+  and Cancel sets controller.cancelled = true, which the executor honours between chunks
+  (never inside a transaction). The command closes this window when the session ends.
+-->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Adding Items to My Library"
+        width="420" height="150"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <script><![CDATA[
+    let controller;
+
+    function init() {
+      const args = window.arguments && window.arguments[0];
+      if (!args || !args.controller) { window.close(); return; }
+      controller = args.controller;
+      controller.update = update;
+      update(0, controller.total);
+    }
+
+    function update(done, total) {
+      document.getElementById("status").textContent = `${done} of ${total} items`;
+      const bar = document.getElementById("bar");
+      bar.max = total || 1;
+      bar.value = done;
+    }
+
+    function cancel() {
+      controller.cancelled = true;
+      const button = document.getElementById("cancel");
+      button.disabled = true;
+      button.label = "Cancelling after the current chunk…";
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 16px; gap: 10px;">
+    <html:div id="status">Preparing…</html:div>
+    <html:progress id="bar" style="width: 100%;" value="0" max="1"/>
+    <hbox pack="end">
+      <button id="cancel" label="Cancel" oncommand="cancel()"/>
+    </hbox>
+  </vbox>
+</window>

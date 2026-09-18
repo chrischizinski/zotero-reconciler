@@ -40,7 +40,7 @@ function outcomeFixture(): ImportOutcome {
       { row: b!, status: "skipped", reason: "stale-source", detail: "changed" },
       { row: c!, status: "failed", error: "disk full" }
     ],
-    totals: { created: 1, skippedStale: 1, skippedMissing: 0, skippedExisting: 0, failed: 1 }
+    totals: { created: 1, skippedStale: 1, skippedMissing: 0, skippedExisting: 0, failed: 1, cancelled: 0 }
   };
 }
 

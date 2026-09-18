@@ -57,6 +57,29 @@ export interface ZoteroWriteAPI {
 export function zoteroWriteAPI(zotero: ZoteroWriteAPI): WriteAPI {
   const item = (ref: WriteItemRef): ZoteroWritableItem | undefined => zotero.Items.getByLibraryAndKey(ref.libraryID, ref.itemKey) || undefined;
 
+  async function copyItems(refs: readonly WriteItemRef[], options: CopyOptions): Promise<WriteItemRef[]> {
+    const sources = refs.map((ref) => {
+      const source = item(ref);
+      if (!source) throw new Error(`Source item ${ref.libraryID}:${ref.itemKey} no longer exists.`);
+      return source;
+    });
+    for (const source of sources) await source.loadAllData();
+    // Same sequence as Zotero's own drag-copy (collectionTree.js _copyItem, chunked per
+    // transaction), inside one transaction so a saved copy without its link or collection
+    // cannot exist and the chunk is all-or-nothing.
+    return zotero.DB.executeTransaction(async () => {
+      const copies: WriteItemRef[] = [];
+      for (const source of sources) {
+        const copy = source.clone(options.targetLibraryID, { skipTags: !options.copyTags });
+        copy.setCollections([options.collectionKey]);
+        await copy.save({ skipSelect: true });
+        await copy.addLinkedItem(source);
+        copies.push({ libraryID: copy.libraryID, itemKey: copy.key });
+      }
+      return copies;
+    });
+  }
+
   return {
     userLibraryID: () => zotero.Libraries.userLibraryID,
 
@@ -85,19 +108,11 @@ export function zoteroWriteAPI(zotero: ZoteroWriteAPI): WriteAPI {
     },
 
     async copyItem(ref, options: CopyOptions): Promise<WriteItemRef> {
-      const source = item(ref);
-      if (!source) throw new Error(`Source item ${ref.libraryID}:${ref.itemKey} no longer exists.`);
-      await source.loadAllData();
-      // Same sequence as Zotero's own drag-copy (collectionTree.js _copyItem), inside one
-      // transaction so a saved copy without its link or collection cannot exist.
-      return zotero.DB.executeTransaction(async () => {
-        const copy = source.clone(options.targetLibraryID, { skipTags: !options.copyTags });
-        copy.setCollections([options.collectionKey]);
-        await copy.save({ skipSelect: true });
-        await copy.addLinkedItem(source);
-        return { libraryID: copy.libraryID, itemKey: copy.key };
-      });
+      const [copy] = await copyItems([ref], options);
+      return copy!;
     },
+
+    copyItems,
 
     async trashItems(refs): Promise<void> {
       const ids = refs.map(item).flatMap((found) => (found && !found.deleted ? [found.id] : []));

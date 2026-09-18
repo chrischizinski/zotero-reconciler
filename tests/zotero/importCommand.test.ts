@@ -43,6 +43,7 @@ function harness(options: { preview?: (model: PreviewModel) => PreviewResult; co
     linkedItemIn: async () => undefined,
     ensureImportCollection: async () => { events.push("collection"); return "COLL0001"; },
     copyItem: async (ref): Promise<WriteItemRef> => { events.push(`copy:${ref.itemKey}`); return { libraryID: MY, itemKey: `NEW${ref.itemKey}` }; },
+    copyItems: async (refs): Promise<WriteItemRef[]> => { events.push(`chunk:${refs.map((ref) => ref.itemKey).join(",")}`); return refs.map((ref) => ({ libraryID: MY, itemKey: `NEW${ref.itemKey}` })); },
     trashItems: async (refs) => { events.push(`trash:${refs.map((ref) => ref.itemKey).join(",")}`); }
   };
 
@@ -65,7 +66,11 @@ function harness(options: { preview?: (model: PreviewModel) => PreviewResult; co
     refreshIndex: async () => { events.push("refresh"); },
     openPreview: (model) => { previews.push(model); events.push("preview"); return options.preview?.(model) ?? { confirmed: false, checkedKeys: [], copyTags: false }; },
     confirm: () => { events.push("confirm"); return options.confirmUndo ?? false; },
-    show: (text, title) => { events.push(`show:${title}`); shown.push({ title, text }); }
+    show: (text, title) => { events.push(`show:${title}`); shown.push({ title, text }); },
+    openProgress: (total) => {
+      events.push(`progress:open:${total}`);
+      return { update: ({ done }) => { events.push(`progress:${done}`); }, cancelled: () => false, close: () => { events.push("progress:close"); } };
+    }
   });
   return { command, events, shown, previews, files, logText: () => files.get("/data/zotero-library-reconciler/transactions.jsonl") ?? "" };
 }
@@ -82,7 +87,7 @@ describe("Add Missing Items command — the only path to the write engine (§25 
     const { command, events, shown, logText } = harness({ preview: () => ({ confirmed: true, checkedKeys: ["2:G2"], copyTags: false }) });
     const outcome = await command.run();
     expect(outcome?.totals).toMatchObject({ created: 1, failed: 0 });
-    expect(events).toEqual(["preview", "collection", "copy:G2", "log:appendOrCreate", "refresh", "show:Add Missing Items"]);
+    expect(events).toEqual(["preview", "progress:open:1", "collection", "chunk:G2", "progress:1", "progress:close", "log:appendOrCreate", "refresh", "show:Add Missing Items"]);
     expect(shown[0]?.text).toMatch(/^Created 1 item in My Library/);
     const entry = JSON.parse(logText().trim()) as ImportLogEntry;
     expect(entry.action).toBe("import");
@@ -100,8 +105,9 @@ describe("Add Missing Items command — the only path to the write engine (§25 
       plan: { targetLibraryID: MY, rows: [], copyTags: false, createdAt: "", confirmedAt: "" },
       collectionKey: "C",
       rows: [{ row: { source: { libraryID: GROUP, libraryName: "creel", itemKey: "G1", version: 1, title: "Moved", itemType: "book" }, nearMisses: [], decision: "import" }, status: "skipped", reason: "stale-source", detail: "changed" }],
-      totals: { created: 0, skippedStale: 1, skippedMissing: 0, skippedExisting: 0, failed: 0 }
+      totals: { created: 0, skippedStale: 1, skippedMissing: 0, skippedExisting: 0, failed: 0, cancelled: 3 }
     }, "Logged.");
+    expect(text).toMatch(/cancelled 3 \(not attempted\)/);
     expect(text).toMatch(/Created 0 items[^\n]*skipped 1, failed 0/);
     expect(text).toMatch(/• Moved — skipped: changed/);
   });
@@ -110,7 +116,7 @@ describe("Add Missing Items command — the only path to the write engine (§25 
 const importEntry = (id: string, undone = false): ImportLogEntry => ({
   id, action: "import", confirmedAt: "2026-09-17T19:32:08.000Z", target: { libraryID: MY, collectionKey: "C" },
   rows: [{ source: { libraryID: GROUP, itemKey: "G1", version: 4, title: "Imported paper" }, created: { libraryID: MY, itemKey: "NEWG1" } }],
-  totals: { created: 1, skippedStale: 0, skippedMissing: 0, skippedExisting: 0, failed: 0 },
+  totals: { created: 1, skippedStale: 0, skippedMissing: 0, skippedExisting: 0, failed: 0, cancelled: 0 },
   ...(undone ? { undoneAt: "2026-09-17T20:00:00.000Z" } : {})
 });
 

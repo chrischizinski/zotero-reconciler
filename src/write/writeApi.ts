@@ -45,6 +45,12 @@ export interface WriteAPI {
    * Rejects if any step fails; a half-written row must not exist.
    */
   copyItem(source: WriteItemRef, options: CopyOptions): Promise<WriteItemRef>;
+  /**
+   * The same for a chunk of sources inside ONE transaction, all-or-nothing, results in input
+   * order. Zotero's own drag-copy batches 100 per transaction so notifier work (item tree,
+   * sync queue) is paid once per chunk; the executor retries a failed chunk row by row.
+   */
+  copyItems(sources: readonly WriteItemRef[], options: CopyOptions): Promise<WriteItemRef[]>;
   /** Session undo: moves the given items to the trash (recoverable), with an undo-history label. */
   trashItems(refs: readonly WriteItemRef[]): Promise<void>;
 }

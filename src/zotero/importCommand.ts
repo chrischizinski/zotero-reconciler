@@ -1,7 +1,7 @@
 import { auditLibraries, type ZoteroReadAPI } from "./adapter.js";
 import type { TransactionStore } from "./transactionStore.js";
 import { importCandidates } from "../write/importCandidates.js";
-import { executeImportPlan, type ImportOutcome, type RowOutcome } from "../write/importExecutor.js";
+import { executeImportPlan, type ImportOutcome, type ImportProgress, type RowOutcome } from "../write/importExecutor.js";
 import { buildImportPlan } from "../write/importPlan.js";
 import { applyPreview, previewModel, type PreviewModel, type PreviewResult } from "../write/importPreviewModel.js";
 import { createdRefs, importLogEntry, logEntryID, undoLogEntry, type ImportLogEntry } from "../write/transactionLog.js";
@@ -33,7 +33,15 @@ const IMPORT_MENU_ID = "zotero-library-reconciler-import";
 const UNDO_MENU_ID = "zotero-library-reconciler-undo-import";
 const PREVIEW_URL = "chrome://zotero-library-reconciler/content/importPreview.xhtml";
 const REPORT_URL = "chrome://zotero-library-reconciler/content/report.xhtml";
+const PROGRESS_URL = "chrome://zotero-library-reconciler/content/importProgress.xhtml";
 const UNDO_PREVIEW_ROWS = 15;
+
+/** A live progress display for one session; the command closes it when the session ends. */
+export interface ProgressHandle {
+  update(progress: ImportProgress): void;
+  cancelled(): boolean;
+  close(): void;
+}
 
 export interface ImportCommandOptions {
   writeAPI: WriteAPI;
@@ -47,6 +55,8 @@ export interface ImportCommandOptions {
   confirm?: (message: string) => boolean;
   /** Shows a report; defaults to the report window. */
   show?: (text: string, title: string) => void;
+  /** Opens the progress display; defaults to the non-modal XHTML window with a Cancel button. */
+  openProgress?: (total: number) => ProgressHandle;
 }
 
 export class ImportCommand {
@@ -58,6 +68,7 @@ export class ImportCommand {
   private readonly openPreview: (model: PreviewModel) => PreviewResult;
   private readonly confirm: (message: string) => boolean;
   private readonly show: (text: string, title: string) => void;
+  private readonly openProgress: (total: number) => ProgressHandle;
   /** A second click while a session runs must not start a second session. */
   private busy = false;
 
@@ -69,6 +80,7 @@ export class ImportCommand {
     this.openPreview = options.openPreview ?? ((model) => this.openPreviewWindow(model));
     this.confirm = options.confirm ?? (() => false);
     this.show = options.show ?? ((text, title) => this.openReportWindow(text, title));
+    this.openProgress = options.openProgress ?? ((total) => this.openProgressWindow(total));
   }
 
   register(window: Window = this.zotero.getMainWindow()): void {
@@ -123,7 +135,13 @@ export class ImportCommand {
       }
 
       // WRITE → LOG. The log line is on disk before the user sees a result (invariant 8).
-      const outcome = await executeImportPlan(this.writeAPI, plan);
+      const progress = this.openProgress(plan.rows.filter((row) => row.decision === "import").length);
+      let outcome: ImportOutcome;
+      try {
+        outcome = await executeImportPlan(this.writeAPI, plan, { onProgress: (p) => progress.update(p), shouldCancel: () => progress.cancelled() });
+      } finally {
+        progress.close();
+      }
       const logged = await this.log(outcome);
       if (!outcome.aborted && outcome.totals.created > 0) await this.refreshQuietly();
       this.show(renderOutcome(outcome, logged), "Add Missing Items");
@@ -190,6 +208,22 @@ export class ImportCommand {
     return result;
   }
 
+  private openProgressWindow(total: number): ProgressHandle {
+    const controller: { total: number; cancelled: boolean; update?: (done: number, total: number) => void } = { total, cancelled: false };
+    const window = this.zotero.getMainWindow() as ChromeWindow;
+    let dialog: Window | undefined;
+    try {
+      dialog = window.openDialog(PROGRESS_URL, "", "chrome,dialog=no,centerscreen", { controller });
+    } catch (error) {
+      this.zotero.debug(`[Zotero Library Reconciler] Progress window failed; continuing without it: ${String(error)}`);
+    }
+    return {
+      update: ({ done, total: all }) => controller.update?.(done, all),
+      cancelled: () => controller.cancelled,
+      close: () => { try { dialog?.close(); } catch { /* already closed by the user */ } }
+    };
+  }
+
   private openReportWindow(text: string, title: string): void {
     const window = this.zotero.getMainWindow() as ChromeWindow;
     try {
@@ -206,8 +240,9 @@ export function renderOutcome(outcome: ImportOutcome, logged: string): string {
   if (outcome.aborted) return `Nothing was imported: ${outcome.aborted}\n\n${logged}`;
   const { totals } = outcome;
   const skipped = totals.skippedStale + totals.skippedMissing + totals.skippedExisting;
-  const head = `Created ${totals.created} item${totals.created === 1 ? "" : "s"} in My Library (collection "Reconciler Imports"), skipped ${skipped}, failed ${totals.failed}.`;
-  const detail = outcome.rows.filter((row) => row.status !== "created").map(describeRow);
+  const cancelled = totals.cancelled > 0 ? `, cancelled ${totals.cancelled} (not attempted)` : "";
+  const head = `Created ${totals.created} item${totals.created === 1 ? "" : "s"} in My Library (collection "Reconciler Imports"), skipped ${skipped}, failed ${totals.failed}${cancelled}.`;
+  const detail = outcome.rows.filter((row) => row.status !== "created" && row.status !== "cancelled").map(describeRow);
   const sections = [head, ...(detail.length > 0 ? [`Not imported:\n${detail.join("\n")}`] : []), logged];
   return sections.join("\n\n");
 }
