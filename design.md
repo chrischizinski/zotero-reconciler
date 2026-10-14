@@ -1866,6 +1866,12 @@ This item changed after the reconciliation scan.
 
 rather than overwriting newer data.
 
+**Correction (2026-10-14, from Zotero 10.0.6 source).** The local `version` column changes
+only when sync assigns a server version; an unsynced local edit leaves it unchanged (only
+`clientDateModified` and `synced` move). A `version` check therefore cannot detect the
+edits this section exists to protect. Phase 4 uses an in-transaction field-value
+compare-and-swap instead — see `docs/phase4-field-reconciliation.md` §2.1 and §6.
+
 ## Batch semantics
 
 The version check above is described per item, but §27 shows sessions of 347 items. The

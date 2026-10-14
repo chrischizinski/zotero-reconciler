@@ -337,3 +337,12 @@ Still open from the review (not changed):
   prompt when a library changed since the scan. Fix = shutdown flag/abort in FindCopiesCommand.
 - Next: Phase 4 design session. Still open: stale sameAs links (user decision), 4 data errors,
   `disableIn`/`defaultIn` → `enabledTreeIDs`.
+
+## 2026-10-14 Phase 4 design written (no code)
+
+- `docs/phase4-field-reconciliation.md`: My Library-only target, 4-class difference engine,
+  direct EXACT/HIGH pair gate, in-transaction field-value CAS (replaces §40 version check —
+  correction note added to design.md §40), native undo via built-in
+  `undo-action-edit-metadata` + plugin session undo (CAS in reverse), log entry
+  `update_metadata`, 3 slices behind pref `enableReconcile`.
+- Decisions A–G in §12 await the user. No code until answered.
