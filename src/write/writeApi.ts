@@ -49,6 +49,13 @@ export interface FieldCheck {
   expected: FieldValue;
 }
 
+/** One item's compare-and-swap edit, as `updateFields` takes it. */
+export interface FieldUpdate {
+  target: WriteItemRef;
+  writes: readonly FieldWrite[];
+  checks: readonly FieldCheck[];
+}
+
 export type UpdateStatus = "written" | "target-changed" | "source-changed" | "target-missing";
 
 export interface UpdateResult {
@@ -92,4 +99,11 @@ export interface WriteAPI {
    * or a field outside the reconcilable allowlist.
    */
   updateFields(target: WriteItemRef, writes: readonly FieldWrite[], checks: readonly FieldCheck[]): Promise<UpdateResult>;
+  /**
+   * The same for a chunk of items inside ONE transaction (one ⌘Z step), results in input
+   * order. Each item is re-checked on its own: a stale item is skipped (its status says why)
+   * and the rest are written. Throws — writing nothing — on any target outside My Library or
+   * field outside the allowlist, or if a save fails (the caller retries item by item).
+   */
+  updateFieldsBatch(updates: readonly FieldUpdate[]): Promise<UpdateResult[]>;
 }

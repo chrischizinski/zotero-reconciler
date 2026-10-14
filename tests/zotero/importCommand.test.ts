@@ -46,7 +46,8 @@ function harness(options: { preview?: (model: PreviewModel) => PreviewResult; co
     copyItems: async (refs): Promise<WriteItemRef[]> => { events.push(`chunk:${refs.map((ref) => ref.itemKey).join(",")}`); return refs.map((ref) => ({ libraryID: MY, itemKey: `NEW${ref.itemKey}` })); },
     trashItems: async (refs) => { events.push(`trash:${refs.map((ref) => ref.itemKey).join(",")}`); },
     // The import path must never edit an existing item's fields (Phase 3 invariant 1).
-    updateFields: async () => { throw new Error("import must not edit fields"); }
+    updateFields: async () => { throw new Error("import must not edit fields"); },
+    updateFieldsBatch: async () => { throw new Error("import must not edit fields"); }
   };
 
   const groupItems = options.groupItems ?? [zoteroItem(GROUP, "G1", "Only in the group"), zoteroItem(GROUP, "G2", "Also only in the group")];

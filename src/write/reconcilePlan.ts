@@ -87,22 +87,38 @@ export function reconcilePreviewModel(title: string, differences: readonly Field
 const UNVERIFIED_IDENTIFIERS: ReadonlySet<string> = new Set(["DOI", "ISBN", "ISSN"]);
 
 function previewRow(difference: FieldDifference): ReconcilePreviewRow {
-  const offerable = difference.targetName !== undefined && difference.notOffered === undefined && difference.alternatives.length > 0;
-  const missingInTarget = difference.class === "MISSING" && difference.missingIn === "target";
-  const identifier = UNVERIFIED_IDENTIFIERS.has(difference.field);
+  const offerable = isOfferable(difference);
+  const unverifiedIdentifier = offerable && missingInTarget(difference) && UNVERIFIED_IDENTIFIERS.has(difference.field);
   return {
     field: difference.field,
     class: difference.class,
     targetDisplay: display(difference.targetValue) || "—",
     choices: difference.alternatives.map((alternative, index) => ({ index, label: choiceLabel(alternative) })),
-    defaultChoice: offerable && missingInTarget && !identifier ? 0 : -1,
+    defaultChoice: isPreselected(difference) ? 0 : -1,
     offerable,
     notes: [
       ...difference.notes,
-      ...(offerable && missingInTarget && identifier ? ["Identifier not verified by this match — check it before copying."] : []),
+      ...(unverifiedIdentifier ? ["Identifier not verified by this match — check it before copying."] : []),
       ...(difference.notOffered ? [`Not offered: ${difference.notOffered}.`] : [])
     ]
   };
+}
+
+function isOfferable(difference: FieldDifference): boolean {
+  return difference.targetName !== undefined && difference.notOffered === undefined && difference.alternatives.length > 0;
+}
+
+function missingInTarget(difference: FieldDifference): boolean {
+  return difference.class === "MISSING" && difference.missingIn === "target";
+}
+
+/**
+ * THE definition of "fill missing" (invariant 4): My Library has no value, every strong copy
+ * agrees on one, and the field is not an identifier. Compare Copies pre-selects exactly these
+ * rows; the batch "Fill Missing Fields" writes exactly these and nothing else.
+ */
+export function isPreselected(difference: FieldDifference): boolean {
+  return isOfferable(difference) && missingInTarget(difference) && !UNVERIFIED_IDENTIFIERS.has(difference.field);
 }
 
 /** Cancel → no plan. Otherwise only offerable rows with an in-range choice become edits. */
@@ -114,13 +130,22 @@ export function applyReconcilePreview(
   now: Date
 ): ReconcilePlan | undefined {
   if (!result.confirmed) return undefined;
+  return { ...proposePlan(target, differences, sources, result.choices), confirmedAt: now.toISOString() };
+}
+
+/** An UNCONFIRMED plan for the given choices; only offerable rows with an in-range choice become edits. */
+export function proposePlan(
+  target: WriteItemRef & { title: string },
+  differences: readonly FieldDifference[],
+  sources: readonly GatedSource[],
+  choices: Readonly<Record<string, number>>
+): ReconcilePlan {
   const edits: FieldEdit[] = [];
   for (const difference of differences) {
-    const index = result.choices[difference.field];
+    const index = choices[difference.field];
     if (index === undefined || index < 0) continue;
     const alternative = difference.alternatives[index];
-    const row = previewRow(difference);
-    if (!row.offerable || !alternative || difference.targetName === undefined) continue;
+    if (!isOfferable(difference) || !alternative || difference.targetName === undefined) continue;
     const source = alternative.sources[0]!;
     edits.push({
       field: difference.field,
@@ -132,12 +157,13 @@ export function applyReconcilePreview(
       sourceName: alternative.sourceName
     });
   }
-  return {
-    target,
-    edits,
-    evidence: sources.map(({ ref, evidence }) => `${ref.libraryName}: ${evidence}`),
-    confirmedAt: now.toISOString()
-  };
+  return { target, edits, evidence: sources.map(({ ref, evidence }) => `${ref.libraryName}: ${evidence}`) };
+}
+
+/** The batch's plan for one item: the pre-selected rows only, unconfirmed. */
+export function fillMissingPlan(target: WriteItemRef & { title: string }, differences: readonly FieldDifference[], sources: readonly GatedSource[]): ReconcilePlan {
+  const choices = Object.fromEntries(differences.filter(isPreselected).map((difference) => [difference.field, 0]));
+  return proposePlan(target, differences, sources, choices);
 }
 
 function choiceLabel(alternative: Alternative): string {

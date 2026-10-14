@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compareRecords, type FieldRecord } from "../../src/comparison/differenceEngine.js";
 import { executeReconcilePlan } from "../../src/write/reconcileExecutor.js";
 import { applyReconcilePreview, reconcilePreviewModel, type GatedSource } from "../../src/write/reconcilePlan.js";
-import { isLogEntry, metadataLogEntry, revertWrites } from "../../src/write/transactionLog.js";
+import { isLogEntry, lastMetadataSession, metadataLogEntry, revertWrites, type LogEntry, type MetadataLogEntry } from "../../src/write/transactionLog.js";
 import type { FieldCheck, FieldWrite, UpdateResult, WriteAPI } from "../../src/write/writeApi.js";
 
 const MY = { libraryID: 1, libraryName: "My Library", itemKey: "MINE0001", version: 1 };
@@ -125,5 +125,21 @@ describe("Metadata log entry and its undo", () => {
       { name: "issue", expected: "4", next: "" },
       { name: "pages", expected: "1021-1034", next: "1-10" }
     ]);
+  });
+});
+
+describe("lastMetadataSession — what one plugin undo reverses", () => {
+  const entry = (id: string, extra: Partial<MetadataLogEntry> = {}): MetadataLogEntry => ({
+    id, action: "update_metadata", confirmedAt: "", target: { libraryID: 1, itemKey: id, title: id }, status: "written",
+    changes: [{ field: "issue", name: "issue", old: "", new: "4", class: "MISSING", source: { libraryID: 2, itemKey: "S", libraryName: "Textbook" } }], evidence: [], ...extra
+  });
+
+  it("a Compare Copies entry is reverted alone", () => {
+    expect(lastMetadataSession([entry("a", { session: "s" }), entry("b")]).map((e) => e.id)).toEqual(["b"]);
+  });
+
+  it("a session's skipped, already-undone and empty entries are not reverted; another session is untouched", () => {
+    const log: LogEntry[] = [entry("x", { session: "old" }), entry("a", { session: "s" }), entry("b", { session: "s", status: "target-changed", changes: [] }), entry("c", { session: "s", undoneAt: "t" }), entry("d", { session: "s" })];
+    expect(lastMetadataSession(log).map((e) => e.id)).toEqual(["a", "d"]);
   });
 });

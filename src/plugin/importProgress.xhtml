@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-  Phase 3 import progress. Non-modal. Receives { controller } via window.arguments[0]:
+  Batch progress (Phase 3 import, Phase 4 fill). Non-modal. controller.title sets the window title. Receives { controller } via window.arguments[0]:
   the window sets controller.update(done, total) for the executor to call after each chunk,
   and Cancel sets controller.cancelled = true, which the executor honours between chunks
   (never inside a transaction). The command closes this window when the session ends.
@@ -21,6 +21,7 @@
       const args = window.arguments && window.arguments[0];
       if (!args || !args.controller) { window.close(); return; }
       controller = args.controller;
+      if (controller.title) document.title = controller.title;
       controller.update = update;
       update(0, controller.total);
     }

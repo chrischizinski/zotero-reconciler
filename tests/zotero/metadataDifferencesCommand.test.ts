@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RecordCreator } from "../../src/comparison/differenceEngine.js";
-import { MetadataDifferencesCommand, type DifferencesActions, type DifferencesWindowModel } from "../../src/zotero/metadataDifferencesCommand.js";
+import { MetadataDifferencesCommand, windowModel, type DifferencesActions, type DifferencesWindowModel } from "../../src/zotero/metadataDifferencesCommand.js";
 import type { ZoteroItem } from "../../src/zotero/adapter.js";
+import type { ItemDifferenceSummary } from "../../src/audit/metadataDifferences.js";
 
 const MY = 1;
 const GROUP = 2;
@@ -59,6 +60,15 @@ describe("Metadata Differences command — read-only report over strong matches"
     const report = await command.run();
     expect(report?.compared).toBe(2);
     expect(opened()?.model.rows.map((row) => [row.itemKey, row.counts])).toEqual([["MINE0001", "1 missing · 0 different · 0 conflicting"]]);
+  });
+
+  it("a missing identifier is labelled as never auto-filled, so the list cannot be read as 'Fill Missing will write the DOI'", async () => {
+    const { command, opened } = harness();
+    await command.run();
+    const row = { target: { libraryID: 1, libraryName: "My Library", itemKey: "K", version: 1 }, title: "T", sourceLibraries: ["Textbook"], missing: 2, fillable: 1, different: 0, conflicting: 0,
+      fields: [{ field: "issue", class: "MISSING", fillable: true }, { field: "DOI", class: "MISSING", fillable: false }] } as ItemDifferenceSummary;
+    expect(windowModel({ compared: 1, items: [row], unreadable: 0 }, true).rows[0]?.detail).toBe("issue (missing), DOI (missing — identifier, check by hand) — vs Textbook");
+    expect(opened()).toBeDefined();
   });
 
   it("without the Phase 4 write path there is no Compare action — the report cannot lead to a write", async () => {

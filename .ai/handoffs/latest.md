@@ -395,3 +395,42 @@ Still open from the review (not changed):
   and `fieldComparator.ts` only feeds Find Copies' "Differences:" line — retire both in favour
   of the Difference Engine (separate change).
 - MISSING DOI/ISBN/ISSN never pre-selected (7d21383). Slice 3 must honour the same rule.
+- LIVE (a506784): after Rescan Now, a restart logged "0 libraries have changed since" —
+  fingerprint fix verified end to end.
+
+## 2026-10-14 Phase 4 slice 3 — Fill Missing Fields (live-verified)
+
+- Tools → "Fill Missing Fields from Other Libraries…" (behind `enableReconcile`).
+  `src/zotero/fillMissingCommand.ts`, `src/write/fillPlan.ts` (plan + preview model),
+  `src/write/fillExecutor.ts` (chunks of 25, cancel between chunks, per-item retry on chunk
+  failure; `writeChunk` shared with undo), `src/plugin/fillPreview.xhtml` (untick only, soft
+  cap 250 → second click). Progress window reused (`openProgressDialog`, title param).
+- ONE definition: `isPreselected` in reconcilePlan.ts (MISSING-in-target, sources agree,
+  offerable, not DOI/ISBN/ISSN). Compare Copies pre-selects it, the batch writes exactly it
+  (`fillMissingPlan`), and the Metadata Differences report's `fillable` now counts it (it
+  used to count identifiers; new `missing` count keeps the raw number).
+- Adapter: `updateFieldsBatch(updates)` — one transaction, per-item CAS, stale items skipped,
+  rest written; every save carries `count` = items written (Zotero: one undo step per
+  transaction, last stageAction wins — omni.ja undoHistory.js). `updateFields` = batch of 1.
+- Log: one `update_metadata` entry per attempted item with shared `session`, appended in one
+  write (`appendAll`); ids `<session>-<i>`. Undo Last Metadata Update reverts the whole last
+  session (`lastMetadataSession`), chunked, marks only restored entries undone.
+- 208 tests; 7 mutation checks all caught (identifier exclusion, undo count, stale-skips-one,
+  cancel, per-item confirm, session undo, untick).
+- DB snapshot before live run in scratchpad `before-fill.txt` (per-library count, max
+  clientDateModified, sum(version), sum(synced)); groups 2–8 must be unchanged after.
+- Live steps: Tools → Fill Missing → check preview (no DOI/ISBN/ISSN rows) → untick most,
+  fill a few → verify DB + log → ⌘Z (one chunk) → redo via Fill → Tools → Undo Last Metadata
+  Update (session) → Cancel mid-run on a >25-item session.
+- LIVE 2026-10-14 (dev profile): Run A — 3 items / 7 fields (incl. report `institution`,
+  `place` via type-mapped names) written, DB matched log, groups 2–8 identical to snapshot;
+  session undo "Restored 3 of 3", fields empty again. Run B — Tick All: 125 items / 228
+  fields, 125 unique entry ids, every value in DB, zero DOI/ISBN/ISSN, groups unchanged
+  (one apparent date mismatch = Zotero's multipart storage `1980-00-00 1980`; getField
+  returns `1980`). Session undo: 125 reverts written, 125 marked undone, 0 fields left.
+- NOT live-tested: Cancel (125 items finished in < 1 s) and the 250 soft cap (125 < 250).
+  Both covered by unit tests; same window code verified live in Phase 3 (2026-09-18).
+- Report label: a missing identifier now reads "DOI (missing — identifier, check by hand)".
+- Still open: retire fieldComparator / audit.discrepancies; orphaned async restoreIndex
+  after double startup; Phase 3 decisions (stale sameAs links, 4 data errors);
+  disableIn/defaultIn → enabledTreeIDs.

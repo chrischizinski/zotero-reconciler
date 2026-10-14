@@ -1,4 +1,5 @@
 import { CoverageColumn, type ItemTreeManagerAPI } from "../zotero/coverageColumn.js";
+import { FillMissingCommand } from "../zotero/fillMissingCommand.js";
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
 import { ImportCommand } from "../zotero/importCommand.js";
 import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
@@ -31,6 +32,7 @@ let findCopiesCommand: FindCopiesCommand | undefined;
 let importCommand: ImportCommand | undefined;
 let reconcileCommand: ReconcileCommand | undefined;
 let differencesCommand: MetadataDifferencesCommand | undefined;
+let fillMissingCommand: FillMissingCommand | undefined;
 let coverageColumn: CoverageColumn | undefined;
 
 /**
@@ -101,6 +103,10 @@ runtimeGlobal.ZoteroLibraryReconciler = {
         store: transactionStore(),
         confirm: (message) => confirmDialog(message, "Undo Last Metadata Update", "Restore"),
       });
+      fillMissingCommand = new FillMissingCommand(Zotero as ConstructorParameters<typeof FillMissingCommand>[0], {
+        writeAPI: zoteroWriteAPI(Zotero as unknown as ZoteroWriteAPI),
+        store: transactionStore(),
+      });
     }
     // Read-only, so not gated; its Compare button exists only when the write path does.
     const reconcile = reconcileCommand;
@@ -115,6 +121,7 @@ runtimeGlobal.ZoteroLibraryReconciler = {
       command.register(window);
       importCommand?.register(window);
       reconcileCommand?.register(window);
+      fillMissingCommand?.register(window);
       differencesCommand.register(window);
     }
     coverageColumn.register();
@@ -129,6 +136,8 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     importCommand = undefined;
     reconcileCommand?.unregister();
     reconcileCommand = undefined;
+    fillMissingCommand?.unregister();
+    fillMissingCommand = undefined;
     differencesCommand?.unregister();
     differencesCommand = undefined;
     findCopiesCommand?.unregister();
@@ -139,12 +148,14 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     findCopiesCommand?.register(window);
     importCommand?.register(window);
     reconcileCommand?.register(window);
+    fillMissingCommand?.register(window);
     differencesCommand?.register(window);
   },
   onMainWindowUnload(window: Window): void {
     findCopiesCommand?.unregister(window);
     importCommand?.unregister(window);
     reconcileCommand?.unregister(window);
+    fillMissingCommand?.unregister(window);
     differencesCommand?.unregister(window);
   },
 };

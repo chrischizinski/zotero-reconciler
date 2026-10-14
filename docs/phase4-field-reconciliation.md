@@ -215,7 +215,8 @@ The full scan stays as fast as it is.
  *  Rejects any field outside RECONCILABLE_FIELDS (citationKey, extra, itemType → throw). */
 updateFields(target: WriteItemRef, edits: readonly FieldEdit[], source: SourceGuard,
              undo: { count: number }): Promise<"written" | "target-changed" | "source-changed">;
-updateFieldsBatch(...)  // the same for a chunk of 25 items in one transaction (one ⌘Z step)
+updateFieldsBatch(updates)  // the same for a chunk of 25 items in one transaction (one ⌘Z step);
+                            // each item re-checked on its own, a stale one skipped, the rest written
 ```
 
 The allowlist is enforced **in the adapter**, not just in the UI. A bug upstream must not be
@@ -259,6 +260,15 @@ Same file (`<dataDir>/zotero-library-reconciler/transactions.jsonl`), new `actio
   "undoneAt": null
 }
 ```
+
+**Implementation note (slice 3, 2026-10-14):** a batch session is logged as one
+`update_metadata` line *per attempted item* (the same shape Compare Copies writes), all
+sharing a `session` id and written in one append; IDs are `<session>-<index>` (a 4-hex random
+suffix alone collides at a few hundred items). Cancelled items are not logged (nothing was
+attempted). "Undo Last Metadata Update…" reverts the latest entry, or every un-undone written
+entry of its session, in chunks of 25 with the same compare-and-swap; only items actually
+restored are marked undone. This reuses the per-item entry, undo and `markUndone` unchanged
+instead of adding a nested entry kind.
 
 Creators are logged as JSON arrays in `old`/`new`. Invariant 8 from Phase 3 carries over:
 the log line is written before the result window, and a failed log write is reported, not

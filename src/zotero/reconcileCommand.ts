@@ -1,9 +1,12 @@
 import { findCopies, readFieldRecord, type CopyMatch, type ZoteroFieldReadAPI, type ZoteroItem, type ZoteroReadAPI } from "./adapter.js";
 import type { TransactionStore } from "./transactionStore.js";
+import { describeMatch } from "../audit/metadataDifferences.js";
 import { compareRecords, type FieldRecord } from "../comparison/differenceEngine.js";
 import { executeReconcilePlan, type ReconcileOutcome } from "../write/reconcileExecutor.js";
 import { applyReconcilePreview, display, reconcilePreviewModel, type GatedSource, type ReconcilePreviewModel, type ReconcilePreviewResult } from "../write/reconcilePlan.js";
-import { logEntryID, metadataLogEntry, revertLogEntry, revertWrites, type MetadataLogEntry, type RevertLogEntry } from "../write/transactionLog.js";
+import { writeChunk, type ChunkResult } from "../write/fillExecutor.js";
+import { DEFAULT_CHUNK_SIZE } from "../write/importExecutor.js";
+import { lastMetadataSession, logEntryID, metadataLogEntry, revertLogEntry, revertWrites, type MetadataLogEntry, type RevertLogEntry } from "../write/transactionLog.js";
 import type { WriteAPI } from "../write/writeApi.js";
 
 /**
@@ -135,7 +138,7 @@ export class ReconcileCommand {
       if (!target) throw new Error("The selected item could not be read.");
       const read = await Promise.all(gated.map(async (copy) => ({ copy, record: await readFieldRecord(this.zotero, copy.item.ref) })));
       const usable = read.filter((entry): entry is { copy: CopyMatch; record: FieldRecord } => entry.record !== undefined);
-      const sources: GatedSource[] = usable.map(({ copy }) => ({ ref: copy.item.ref, evidence: describeEvidence(copy) }));
+      const sources: GatedSource[] = usable.map(({ copy }) => ({ ref: copy.item.ref, evidence: describeMatch(copy.result) }));
       const differences = compareRecords(target, usable.map(({ record }) => record));
 
       // PROPOSE → PREVIEW → CONFIRM
@@ -166,33 +169,34 @@ export class ReconcileCommand {
     }
   }
 
-  /** Reverts the most recent un-undone written entry, field by field compare-and-swap (invariant 10). */
-  async undoLast(): Promise<RevertLogEntry | undefined> {
+  /**
+   * Reverts the most recent un-undone written entry — or, for a Fill Missing session, every
+   * written item of that session — field by field compare-and-swap (invariant 10), in chunks of
+   * one transaction each. An item whose field changed since is skipped and stays not undone.
+   */
+  async undoLast(): Promise<RevertLogEntry[] | undefined> {
     const undoTitle = "Undo Last Metadata Update";
     if (this.busy) { this.show("A metadata update is already running.", undoTitle); return undefined; }
     this.busy = true;
     try {
       const { entries } = await this.store.readAll();
-      const last = [...entries].reverse().find((entry): entry is MetadataLogEntry => entry.action === "update_metadata" && entry.status === "written" && !entry.undoneAt && entry.changes.length > 0);
-      if (!last) { this.show("No metadata update to undo.", undoTitle); return undefined; }
-      if (!this.confirm(renderRevertPrompt(last))) return undefined;
+      const group = lastMetadataSession(entries);
+      if (group.length === 0) { this.show("No metadata update to undo.", undoTitle); return undefined; }
+      if (!this.confirm(group.length === 1 ? renderRevertPrompt(group[0]!) : renderSessionRevertPrompt(group))) return undefined;
 
-      let status: RevertLogEntry["status"];
-      let detail: string | undefined;
-      try {
-        const result = await this.writeAPI.updateFields({ libraryID: last.target.libraryID, itemKey: last.target.itemKey }, revertWrites(last), []);
-        status = result.status;
-        detail = result.detail;
-      } catch (error) {
-        status = "failed";
-        detail = String(error);
+      const results: ChunkResult[] = [];
+      for (let start = 0; start < group.length; start += DEFAULT_CHUNK_SIZE) {
+        const chunk = group.slice(start, start + DEFAULT_CHUNK_SIZE);
+        results.push(...(await writeChunk(this.writeAPI, chunk.map((entry) => ({ target: { libraryID: entry.target.libraryID, itemKey: entry.target.itemKey }, writes: revertWrites(entry), checks: [] })))));
       }
       const at = this.now();
-      const entry = revertLogEntry(last, status, detail, logEntryID(at), at);
-      await this.store.append(entry);
-      if (status === "written") await this.store.markUndone(last.id, at.toISOString());
-      this.show(renderRevertOutcome(last, entry), undoTitle);
-      return entry;
+      const base = logEntryID(at);
+      const reverts = group.map((entry, index) => revertLogEntry(entry, results[index]!.status, results[index]!.detail, group.length === 1 ? base : `${base}-${index}`, at));
+      await this.store.appendAll(reverts);
+      const restored = group.filter((_, index) => reverts[index]!.status === "written").map((entry) => entry.id);
+      if (restored.length > 0) await this.store.markUndone(restored, at.toISOString());
+      this.show(group.length === 1 ? renderRevertOutcome(group[0]!, reverts[0]!) : renderSessionRevertOutcome(group, reverts), undoTitle);
+      return reverts;
     } catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Metadata undo failed: ${String(error)}`);
       this.show(`The undo could not complete: ${String(error)}`, undoTitle);
@@ -236,10 +240,6 @@ export function isStrongMatch(copy: CopyMatch): boolean {
   return copy.result.verdict === "match" && (copy.result.tier === "exact" || copy.result.tier === "high");
 }
 
-function describeEvidence(copy: CopyMatch): string {
-  return `${copy.result.tier.toUpperCase()} — ${copy.result.evidence.map(({ detail }) => detail).join(" ")}`;
-}
-
 function renderNoStrongMatch(title: string | undefined, ignored: readonly CopyMatch[]): string {
   const head = `${title || "Untitled"}\n\nNo copy in another library is a strong enough match (EXACT or HIGH) to supply metadata. Nothing can be updated.`;
   if (ignored.length === 0) return `${head}\n\nNo candidate copies were found.`;
@@ -279,4 +279,22 @@ function renderRevertOutcome(entry: MetadataLogEntry, revert: RevertLogEntry): s
   if (revert.status === "written") return `Restored ${entry.changes.length} field${entry.changes.length === 1 ? "" : "s"} of "${entry.target.title}".`;
   if (revert.status === "target-changed") return `Nothing was restored: a field of "${entry.target.title}" changed after the update (or Edit → Undo already reverted it).\n${revert.detail ?? ""}`;
   return `Nothing was restored (${revert.status}).\n${revert.detail ?? ""}`;
+}
+
+const SESSION_PREVIEW_ROWS = 15;
+
+export function renderSessionRevertPrompt(group: readonly MetadataLogEntry[]): string {
+  const when = group[0]!.confirmedAt.replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  const fields = group.reduce((sum, entry) => sum + entry.changes.length, 0);
+  const lines = group.slice(0, SESSION_PREVIEW_ROWS).map((entry) => `• ${entry.target.title}: ${entry.changes.map((change) => change.field).join(", ")}`);
+  const more = group.length > SESSION_PREVIEW_ROWS ? `\n… and ${group.length - SESSION_PREVIEW_ROWS} more` : "";
+  return `Restore ${fields} field${fields === 1 ? "" : "s"} of ${group.length} items filled on ${when}?\n\n${lines.join("\n")}${more}\n\nAn item with a field you have edited since then is left alone.`;
+}
+
+/** Actual counts, never the session size (invariant 7). */
+export function renderSessionRevertOutcome(group: readonly MetadataLogEntry[], reverts: readonly RevertLogEntry[]): string {
+  const skipped = group.flatMap((entry, index) => (reverts[index]!.status === "written" ? [] : [`• ${entry.target.title} — ${reverts[index]!.status}${reverts[index]!.detail ? `: ${reverts[index]!.detail}` : ""}`]));
+  const restored = group.length - skipped.length;
+  const head = `Restored ${restored} of ${group.length} item${group.length === 1 ? "" : "s"}.`;
+  return skipped.length === 0 ? head : `${head}\n\nNot restored (changed since the fill, or already reverted with Edit → Undo):\n${skipped.join("\n")}`;
 }

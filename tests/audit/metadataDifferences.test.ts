@@ -37,6 +37,12 @@ describe("Metadata Differences report — same gate as Compare Copies (§5), rea
     expect(report.items[0]?.sourceLibraries).toEqual(["Group 2", "Group 3"]);
   });
 
+  it("a missing DOI counts as missing but not fillable: the report's 'fillable' is exactly what Fill Missing would write", () => {
+    const a = ref(MY, "A"), ga = ref(2, "GA");
+    const report = metadataDifferenceReport([pair(a, ga, "match", "high")], MY, records(record(a, { DOI: "", issue: "" }), record(ga, { DOI: "10.1/x", issue: "4" })), title);
+    expect(report.items.map((item) => [item.missing, item.fillable])).toEqual([[2, 1]]);
+  });
+
   it("REVIEW and POSSIBLE pairs never contribute: a weak match must not even suggest values", () => {
     const a = ref(MY, "A"), ga = ref(2, "GA"), gb = ref(2, "GB");
     const report = metadataDifferenceReport([pair(a, ga, "review", "review"), pair(a, gb, "match", "review")], MY, records(record(a, { issue: "" }), record(ga, { issue: "4" }), record(gb, { issue: "4" })), title);

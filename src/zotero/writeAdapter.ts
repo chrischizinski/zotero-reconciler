@@ -1,5 +1,5 @@
 import { RECONCILABLE_FIELDS, type FieldValue, type RecordCreator } from "../comparison/differenceEngine.js";
-import type { CopyOptions, FieldWrite, SourceItemState, UpdateResult, WritableLibrary, WriteAPI, WriteItemRef } from "../write/writeApi.js";
+import type { CopyOptions, FieldCheck, FieldUpdate, FieldWrite, SourceItemState, UpdateResult, WritableLibrary, WriteAPI, WriteItemRef } from "../write/writeApi.js";
 
 /**
  * THE ONLY FILE THAT MODIFIES ZOTERO DATA (Phase 3 invariant 1).
@@ -8,7 +8,8 @@ import type { CopyOptions, FieldWrite, SourceItemState, UpdateResult, WritableLi
  * Zotero 10 objects, and nowhere else. `adapter.ts` stays read-only. Grep this file to audit
  * what the plugin can change: create a copy (with Zotero's own linked-item relation), create
  * an import collection, move items to the trash, and (Phase 4) compare-and-swap an allowlist
- * of bibliographic fields on a My Library item. Nothing else edits an existing item.
+ * of bibliographic fields on My Library items (one item, or a chunk in one transaction).
+ * Nothing else edits an existing item.
  *
  * Verified against Zotero 10.0.2 source (omni.ja, 2026-09-17): `Item.clone`,
  * `Item.addLinkedItem` (stores the relation on the user-library side, so a copy INTO My Library
@@ -140,34 +141,63 @@ export function zoteroWriteAPI(zotero: ZoteroWriteAPI): WriteAPI {
     },
 
     async updateFields(ref, writes, checks): Promise<UpdateResult> {
-      if (ref.libraryID !== zotero.Libraries.userLibraryID) throw new Error("Phase 4 edits My Library items only.");
-      const target = item(ref);
-      if (!target || target.deleted) return { status: "target-missing", detail: "The My Library item no longer exists or is in the trash." };
-      for (const write of writes) {
+      const [result] = await updateFieldsBatch([{ target: ref, writes, checks }]);
+      return result!;
+    },
+
+    updateFieldsBatch
+  };
+
+  async function updateFieldsBatch(updates: readonly FieldUpdate[]): Promise<UpdateResult[]> {
+    // Hard limits first, for every item, before anything is read or written (invariant 1).
+    for (const update of updates) {
+      if (update.target.libraryID !== zotero.Libraries.userLibraryID) throw new Error("Phase 4 edits My Library items only.");
+    }
+    const loaded = updates.map((update) => ({ update, target: item(update.target), sources: update.checks.map((check) => ({ check, source: item(check.ref) })) }));
+    for (const { update, target } of loaded) {
+      if (!target) continue;
+      for (const write of update.writes) {
         if (!isReconcilable(zotero, target.itemTypeID, write.name)) throw new Error(`Field '${write.name}' is not reconcilable.`);
       }
-      const sources = checks.map((check) => ({ check, source: item(check.ref) }));
-      await target.loadAllData();
+    }
+    for (const { target, sources } of loaded) {
+      await target?.loadAllData();
       for (const { source } of sources) await source?.loadAllData();
+    }
 
-      // Re-check and write in one transaction, as Zotero's own undo does (UndoHistory._apply):
-      // nothing can change between the comparison and the save.
-      return zotero.DB.executeTransaction(async () => {
-        for (const { check, source } of sources) {
-          if (!source || source.deleted) return { status: "source-changed", detail: `The source item ${check.ref.libraryID}:${check.ref.itemKey} was deleted or trashed.` };
-          if (!sameValue(readValue(source, check.name), check.expected)) return { status: "source-changed", detail: `${check.name} in the source item no longer holds the expected value.` };
-        }
-        for (const write of writes) {
-          if (!sameValue(readValue(target, write.name), write.expected)) return { status: "target-changed", detail: `${write.name} in My Library no longer holds the expected value.` };
-        }
-        for (const write of writes) applyValue(target, write);
-        await target.save({ skipSelect: true, undoAction: EDIT_UNDO_ACTION, undoActionArgs: { count: 1 } });
+    // Re-check and write in one transaction, as Zotero's own undo does (UndoHistory._apply):
+    // nothing can change between the comparison and the save. A stale item is skipped whole;
+    // the others are still written. Every save in one transaction lands as ONE undo step
+    // (UndoHistory batches per transaction; the last stageAction wins), so each save carries
+    // the count of items the step covers.
+    return zotero.DB.executeTransaction(async () => {
+      const results: UpdateResult[] = loaded.map(({ update, target, sources }) => recheck(update, target, sources));
+      const toWrite = loaded.filter((_, index) => results[index]!.status === "written");
+      for (const { update, target } of toWrite) {
+        for (const write of update.writes) applyValue(target!, write);
+        await target!.save({ skipSelect: true, undoAction: EDIT_UNDO_ACTION, undoActionArgs: { count: toWrite.length } });
+      }
+      return loaded.map(({ update, target }, index) => {
+        if (results[index]!.status !== "written") return results[index]!;
         const stored: Record<string, FieldValue> = {};
-        for (const write of writes) stored[write.name] = readValue(target, write.name);
+        for (const write of update.writes) stored[write.name] = readValue(target!, write.name);
         return { status: "written", stored };
       });
-    }
-  };
+    });
+  }
+}
+
+/** The §6 compare-and-swap for one item; `written` here means "may be written". */
+function recheck(update: FieldUpdate, target: ZoteroWritableItem | undefined, sources: readonly { check: FieldCheck; source: ZoteroWritableItem | undefined }[]): UpdateResult {
+  if (!target || target.deleted) return { status: "target-missing", detail: "The My Library item no longer exists or is in the trash." };
+  for (const { check, source } of sources) {
+    if (!source || source.deleted) return { status: "source-changed", detail: `The source item ${check.ref.libraryID}:${check.ref.itemKey} was deleted or trashed.` };
+    if (!sameValue(readValue(source, check.name), check.expected)) return { status: "source-changed", detail: `${check.name} in the source item no longer holds the expected value.` };
+  }
+  for (const write of update.writes) {
+    if (!sameValue(readValue(target, write.name), write.expected)) return { status: "target-changed", detail: `${write.name} in My Library no longer holds the expected value.` };
+  }
+  return { status: "written" };
 }
 
 function isReconcilable(zotero: ZoteroWriteAPI, itemTypeID: number, name: string): boolean {

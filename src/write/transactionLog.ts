@@ -59,6 +59,8 @@ export interface MetadataLogEntry {
   changes: readonly LoggedChange[];
   /** Match evidence for each source library, so "why were these the same work?" stays answerable. */
   evidence: readonly string[];
+  /** Fill Missing session this item belongs to; the session undo reverts every entry sharing it. Absent for Compare Copies. */
+  session?: string;
   undoneAt?: string;
 }
 
@@ -74,7 +76,7 @@ export interface RevertLogEntry {
 
 export type LogEntry = ImportLogEntry | UndoLogEntry | MetadataLogEntry | RevertLogEntry;
 
-export function metadataLogEntry(outcome: ReconcileOutcome, id: string): MetadataLogEntry {
+export function metadataLogEntry(outcome: ReconcileOutcome, id: string, session?: string): MetadataLogEntry {
   const { plan } = outcome;
   const written = outcome.status === "written";
   return {
@@ -89,8 +91,20 @@ export function metadataLogEntry(outcome: ReconcileOutcome, id: string): Metadat
       new: outcome.stored?.[edit.name] ?? edit.next,
       class: edit.class, source: edit.source
     })) : [],
-    evidence: plan.evidence
+    evidence: plan.evidence,
+    ...(session ? { session } : {})
   };
+}
+
+/**
+ * What one plugin undo reverses: the latest un-undone written metadata entry and, if it came
+ * from a Fill Missing session, every other un-undone written entry of that session.
+ */
+export function lastMetadataSession(entries: readonly LogEntry[]): MetadataLogEntry[] {
+  const undoable = entries.filter((entry): entry is MetadataLogEntry => entry.action === "update_metadata" && entry.status === "written" && !entry.undoneAt && entry.changes.length > 0);
+  const last = undoable[undoable.length - 1];
+  if (!last) return [];
+  return last.session ? undoable.filter((entry) => entry.session === last.session) : [last];
 }
 
 /** The reverse edit: restore `old` only where the field still holds what the session stored. */

@@ -83,18 +83,8 @@ export class MetadataDifferencesCommand {
 
   async run(): Promise<MetadataDifferenceReport | undefined> {
     try {
-      const { audit, myLibraryID, items } = await auditLibraries(this.zotero);
-      const titles = new Map(items.map((item) => [refKey(item.ref), item.fields.title || "Untitled"]));
-      const refs = new Map<string, ItemRef>();
-      for (const { target, partners } of strongPartnersOfMyLibrary(audit.confirmedPairs, myLibraryID).values()) {
-        for (const ref of [target, ...partners]) refs.set(refKey(ref), ref);
-      }
-      const records = new Map<string, FieldRecord>();
-      for (const [key, ref] of refs) {
-        const record = await readFieldRecord(this.zotero, ref);
-        if (record) records.set(key, record);
-      }
-      const report = metadataDifferenceReport(audit.confirmedPairs, myLibraryID, records, (ref) => titles.get(refKey(ref)) ?? "Untitled");
+      const { audit, myLibraryID, titles, records } = await loadStrongComparisons(this.zotero);
+      const report = metadataDifferenceReport(audit.confirmedPairs, myLibraryID, records, titles);
       this.openWindow(windowModel(report, this.compare !== undefined), this.actions(myLibraryID));
       return report;
     } catch (error) {
@@ -135,10 +125,30 @@ export class MetadataDifferencesCommand {
   }
 }
 
+/**
+ * SCAN → MATCH, then the field records of every My Library item with a direct strong match
+ * and of those matches. Shared by this report and Fill Missing, so both see the same items.
+ */
+export async function loadStrongComparisons(zotero: ZoteroReadAPI & ZoteroFieldReadAPI) {
+  const { audit, myLibraryID, items } = await auditLibraries(zotero);
+  const titleByKey = new Map(items.map((item) => [refKey(item.ref), item.fields.title || "Untitled"]));
+  const targets = strongPartnersOfMyLibrary(audit.confirmedPairs, myLibraryID);
+  const refs = new Map<string, ItemRef>();
+  for (const { target, partners } of targets.values()) {
+    for (const ref of [target, ...partners.map((partner) => partner.ref)]) refs.set(refKey(ref), ref);
+  }
+  const records = new Map<string, FieldRecord>();
+  for (const [key, ref] of refs) {
+    const record = await readFieldRecord(zotero, ref);
+    if (record) records.set(key, record);
+  }
+  return { audit, myLibraryID, targets, records, titles: (ref: Pick<ItemRef, "libraryID" | "itemKey">) => titleByKey.get(refKey(ref)) ?? "Untitled" };
+}
+
 export function windowModel(report: MetadataDifferenceReport, canCompare: boolean): DifferencesWindowModel {
   const fillable = report.items.filter((item) => item.fillable > 0).length;
   const parts = [
-    `${report.compared} My Library item${report.compared === 1 ? " has" : "s have"} a strong match (EXACT or HIGH) in another library. ${report.items.length} of them ha${report.items.length === 1 ? "s" : "ve"} fields that differ; ${fillable} ha${fillable === 1 ? "s" : "ve"} fields My Library lacks and every copy agrees on.`,
+    `${report.compared} My Library item${report.compared === 1 ? " has" : "s have"} a strong match (EXACT or HIGH) in another library. ${report.items.length} of them ha${report.items.length === 1 ? "s" : "ve"} fields that differ; ${fillable} ha${fillable === 1 ? "s" : "ve"} fields My Library lacks that every copy agrees on (identifiers not counted: they are never filled automatically).`,
     canCompare
       ? "Compare Copies… opens the update window for that item, which re-reads current values; nothing changes until you confirm there."
       : "Read-only: updating is disabled (extensions.zotero-library-reconciler.enableReconcile).",
@@ -148,7 +158,8 @@ export function windowModel(report: MetadataDifferenceReport, canCompare: boolea
 }
 
 function row(item: ItemDifferenceSummary): DifferencesWindowModel["rows"][number] {
-  const counts = [`${item.fillable} missing`, `${item.different} different`, `${item.conflicting} conflicting`].join(" · ");
-  const fields = item.fields.map((field) => `${field.field} (${field.class.toLowerCase()})`).join(", ");
+  const missing = item.missing === item.fillable ? `${item.missing} missing` : `${item.missing} missing (${item.fillable} fillable; identifiers need checking)`;
+  const counts = [missing, `${item.different} different`, `${item.conflicting} conflicting`].join(" · ");
+  const fields = item.fields.map((field) => `${field.field} (${field.class === "MISSING" && !field.fillable ? "missing — identifier, check by hand" : field.class.toLowerCase()})`).join(", ");
   return { itemKey: item.target.itemKey, title: item.title, counts, detail: `${fields} — vs ${item.sourceLibraries.join(", ")}`, fillable: item.fillable };
 }

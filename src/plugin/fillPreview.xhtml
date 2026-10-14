@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!--
+  Phase 4 slice 3 preview (PREVIEW / CONFIRM, §25). Modal. Receives { model, result } via
+  window.arguments[0]: renders `model` (FillPreviewModel) and writes the user's answer into
+  `result` (FillPreviewResult) before closing. Items can only be unticked: no field or item
+  can be added here, and closing the window any other way leaves result.confirmed = false.
+-->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Fill Missing Fields from Other Libraries"
+        width="820" height="640"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <html:style><![CDATA[
+    /* flex-basis 0 + min-height 0: the list must shrink to the space left, or it pushes the buttons off-screen. */
+    #rows { flex: 1 1 0; min-height: 0; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
+    .row { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--fill-quinary, #e5e5e5); align-items: flex-start; }
+    .row input { margin-top: 3px; }
+    .title { font-weight: 600; overflow-wrap: anywhere; }
+    .detail { color: light-dark(#555, #b0b0b0); font-size: 0.92em; }
+    .edit { font-size: 0.92em; overflow-wrap: anywhere; }
+    #summary { white-space: pre-wrap; }
+    #large-warning { color: light-dark(#8a4b00, #f2b866); font-weight: 600; }
+  ]]></html:style>
+  <script><![CDATA[
+    const HTML_NS = "http://www.w3.org/1999/xhtml";
+    let args;
+    let largeSessionAcknowledged = false;
+
+    function init() {
+      args = window.arguments && window.arguments[0];
+      if (!args || !args.model) { window.close(); return; }
+      document.getElementById("summary").textContent = args.model.summary;
+      const container = document.getElementById("rows");
+      for (const row of args.model.rows) container.appendChild(renderRow(row));
+      updateCount();
+    }
+
+    function renderRow(row) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = "row";
+      const box = document.createElementNS(HTML_NS, "input");
+      box.type = "checkbox";
+      box.dataset.key = row.key;
+      box.dataset.fields = String(row.edits.length);
+      box.checked = !!row.checked;
+      box.addEventListener("change", updateCount);
+      div.appendChild(box);
+      const text = document.createElementNS(HTML_NS, "div");
+      text.style.flex = "1";
+      text.appendChild(line("title", row.title));
+      text.appendChild(line("detail", row.detail));
+      for (const edit of row.edits) text.appendChild(line("edit", edit));
+      div.appendChild(text);
+      return div;
+    }
+
+    function line(className, content) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = className;
+      div.textContent = content;
+      return div;
+    }
+
+    function boxes() {
+      return Array.from(document.querySelectorAll("#rows input[type=checkbox]"));
+    }
+
+    function updateCount() {
+      const ticked = boxes().filter((box) => box.checked);
+      const fields = ticked.reduce((sum, box) => sum + Number(box.dataset.fields), 0);
+      largeSessionAcknowledged = false;
+      document.getElementById("large-warning").hidden = true;
+      const button = document.getElementById("fill");
+      button.label = ticked.length === 0 ? "Fill" : `Fill ${fields} Field${fields === 1 ? "" : "s"} in ${ticked.length} Item${ticked.length === 1 ? "" : "s"}`;
+      button.disabled = ticked.length === 0;
+    }
+
+    function setAll(checked) {
+      for (const box of boxes()) box.checked = checked;
+      updateCount();
+    }
+
+    function confirmFill() {
+      const ticked = boxes().filter((box) => box.checked).length;
+      const threshold = args.model.largeSessionThreshold;
+      if (threshold && ticked > threshold && !largeSessionAcknowledged) {
+        largeSessionAcknowledged = true;
+        const warning = document.getElementById("large-warning");
+        warning.textContent = `Large session: ${ticked} items (more than ${threshold}). It runs in chunks of 25 with a Cancel button and one undo covers the whole session, but several smaller sessions are easier to review. Click Fill again to proceed.`;
+        warning.hidden = false;
+        return;
+      }
+      args.result.checkedKeys = boxes().filter((box) => box.checked).map((box) => box.dataset.key);
+      args.result.confirmed = true;
+      window.close();
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 12px; gap: 8px; min-height: 0;">
+    <html:div id="summary"/>
+    <hbox style="gap: 8px;">
+      <button label="Tick All" oncommand="setAll(true)"/>
+      <button label="Untick All" oncommand="setAll(false)"/>
+    </hbox>
+    <html:div id="rows" flex="1"/>
+    <html:div id="large-warning" hidden="hidden"/>
+    <hbox align="center" style="gap: 12px;">
+      <spacer flex="1"/>
+      <button label="Cancel" oncommand="window.close()"/>
+      <button id="fill" label="Fill" default="true" oncommand="confirmFill()"/>
+    </hbox>
+  </vbox>
+</window>

@@ -1,6 +1,6 @@
 import type { FieldValue } from "../comparison/differenceEngine.js";
 import type { ReconcilePlan } from "./reconcilePlan.js";
-import type { UpdateStatus, WriteAPI } from "./writeApi.js";
+import type { FieldUpdate, UpdateStatus, WriteAPI } from "./writeApi.js";
 
 /**
  * Phase 4 WRITE for one My Library item (docs/phase4-field-reconciliation.md §6, §10). The
@@ -27,13 +27,19 @@ export async function executeReconcilePlan(api: WriteAPI, plan: ReconcilePlan): 
   if (!api.library(plan.target.libraryID)?.editable) return { plan, status: "aborted", detail: "My Library is not editable." };
 
   try {
-    const result = await api.updateFields(
-      plan.target,
-      plan.edits.map((edit) => ({ name: edit.name, expected: edit.old, next: edit.next })),
-      plan.edits.map((edit) => ({ ref: { libraryID: edit.source.libraryID, itemKey: edit.source.itemKey }, name: edit.sourceName, expected: edit.next }))
-    );
+    const { target, writes, checks } = fieldUpdate(plan);
+    const result = await api.updateFields(target, writes, checks);
     return { plan, status: result.status, ...(result.detail ? { detail: result.detail } : {}), ...(result.stored ? { stored: result.stored } : {}) };
   } catch (error) {
     return { plan, status: "failed", detail: String(error) };
   }
+}
+
+/** Target expectations (the values previewed) AND source re-checks (the source must still say what the log will claim). */
+export function fieldUpdate(plan: ReconcilePlan): FieldUpdate {
+  return {
+    target: { libraryID: plan.target.libraryID, itemKey: plan.target.itemKey },
+    writes: plan.edits.map((edit) => ({ name: edit.name, expected: edit.old, next: edit.next })),
+    checks: plan.edits.map((edit) => ({ ref: { libraryID: edit.source.libraryID, itemKey: edit.source.itemKey }, name: edit.sourceName, expected: edit.next }))
+  };
 }

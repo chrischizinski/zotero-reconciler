@@ -214,19 +214,7 @@ export class ImportCommand {
   }
 
   private openProgressWindow(total: number): ProgressHandle {
-    const controller: { total: number; cancelled: boolean; update?: (done: number, total: number) => void } = { total, cancelled: false };
-    const window = this.zotero.getMainWindow() as ChromeWindow;
-    let dialog: Window | undefined;
-    try {
-      dialog = window.openDialog(PROGRESS_URL, "", "chrome,dialog=no,centerscreen", { controller });
-    } catch (error) {
-      this.zotero.debug(`[Zotero Library Reconciler] Progress window failed; continuing without it: ${String(error)}`);
-    }
-    return {
-      update: ({ done, total: all }) => controller.update?.(done, all),
-      cancelled: () => controller.cancelled,
-      close: () => { try { dialog?.close(); } catch { /* already closed by the user */ } }
-    };
+    return openProgressDialog(this.zotero, total, "Adding Items to My Library");
   }
 
   private openReportWindow(text: string, title: string): void {
@@ -238,6 +226,23 @@ export class ImportCommand {
       window.alert(text);
     }
   }
+}
+
+/** The non-modal progress window with a Cancel button (honoured between chunks); shared by every batch command. */
+export function openProgressDialog(zotero: { debug(message: string): void; getMainWindow(): Window }, total: number, title: string): ProgressHandle {
+  const controller: { total: number; title: string; cancelled: boolean; update?: (done: number, total: number) => void } = { total, title, cancelled: false };
+  const window = zotero.getMainWindow() as ChromeWindow;
+  let dialog: Window | undefined;
+  try {
+    dialog = window.openDialog(PROGRESS_URL, "", "chrome,dialog=no,centerscreen", { controller });
+  } catch (error) {
+    zotero.debug(`[Zotero Library Reconciler] Progress window failed; continuing without it: ${String(error)}`);
+  }
+  return {
+    update: ({ done, total: all }) => controller.update?.(done, all),
+    cancelled: () => controller.cancelled,
+    close: () => { try { dialog?.close(); } catch { /* already closed by the user */ } }
+  };
 }
 
 /** Actual counts from the outcome, never the plan size (invariant 7). */

@@ -136,6 +136,53 @@ describe("updateFields — hard limits enforced in the adapter, not just the UI 
   });
 });
 
+describe("updateFieldsBatch — one transaction per chunk, each item re-checked on its own (slice 3)", () => {
+  const issue = (key: string) => ({ target: { libraryID: MY, itemKey: key }, writes: [{ name: "issue", expected: "", next: "4" }], checks: [] });
+
+  it("one stale item is skipped whole; the others in the chunk are still written, in one transaction", async () => {
+    const a = fakeItem(MY, "A", { issue: "" });
+    const stale = fakeItem(MY, "BB", { issue: "3" });
+    const c = fakeItem(MY, "CCC", { issue: "" });
+    const { api, events } = harness([a, stale, c]);
+    const results = await api.updateFieldsBatch([issue("A"), issue("BB"), issue("CCC")]);
+    expect(results.map((result) => result.status)).toEqual(["written", "target-changed", "written"]);
+    expect([a.state.fields.issue, stale.state.fields.issue, c.state.fields.issue]).toEqual(["4", "3", "4"]);
+    expect(stale.log).toEqual([]);
+    expect(events).toEqual(["begin", "commit"]);
+  });
+
+  it("every save carries the count of items the single ⌘Z step covers (Zotero keeps the last label of a transaction)", async () => {
+    const items = [fakeItem(MY, "A", { issue: "" }), fakeItem(MY, "BB", { issue: "9" }), fakeItem(MY, "CCC", { issue: "" })];
+    await harness(items).api.updateFieldsBatch([issue("A"), issue("BB"), issue("CCC")]);
+    const saves = items.flatMap(({ log }) => log.filter((line) => line.startsWith("save")));
+    expect(saves).toEqual(Array(2).fill(`save:${JSON.stringify({ skipSelect: true, undoAction: "undo-action-edit-metadata", undoActionArgs: { count: 2 } })}`));
+  });
+
+  it("one target outside My Library anywhere in the chunk → throws before anything is written", async () => {
+    const a = fakeItem(MY, "A", { issue: "" });
+    const group = fakeItem(GROUP, "SRC", { issue: "" });
+    const { api, events } = harness([a, group]);
+    await expect(api.updateFieldsBatch([issue("A"), { ...issue("SRC"), target: { libraryID: GROUP, itemKey: "SRC" } }])).rejects.toThrow("My Library");
+    expect(a.log).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it("one disallowed field anywhere in the chunk → throws before anything is written", async () => {
+    const a = fakeItem(MY, "A", { issue: "" });
+    const b = fakeItem(MY, "BB", { extra: "" });
+    const { api, events } = harness([a, b]);
+    await expect(api.updateFieldsBatch([issue("A"), { target: { libraryID: MY, itemKey: "BB" }, writes: [{ name: "extra", expected: "", next: "x" }], checks: [] }])).rejects.toThrow("not reconcilable");
+    expect(a.log).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it("a missing item is reported in its slot, not thrown", async () => {
+    const a = fakeItem(MY, "A", { issue: "" });
+    const results = await harness([a]).api.updateFieldsBatch([issue("GONE"), issue("A")]);
+    expect(results.map((result) => result.status)).toEqual(["target-missing", "written"]);
+  });
+});
+
 describe("sameValue — exact, not normalized: the check guards what the user saw", () => {
   it("strings compare exactly", () => {
     expect(sameValue("1021-1034", "1021–1034")).toBe(false);
