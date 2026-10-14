@@ -66,7 +66,7 @@ export class FindCopiesCommand {
     if (!snapshot) return undefined;
     this.lookup = new WorkLookup(snapshot);
     this.onIndexChanged();
-    const stale = staleLibraries(snapshot, currentLibraryVersions(this.zotero));
+    const stale = staleLibraries(snapshot, await currentLibraryVersions(this.zotero));
     this.zotero.debug(`[Zotero Library Reconciler] Restored index of ${snapshot.works.length} works from ${snapshot.scannedAt}; ${stale.length} librar${stale.length === 1 ? "y has" : "ies have"} changed since.`);
     if (stale.length > 0 && this.confirmRescan?.(renderStalePrompt(snapshot, stale))) await this.runAudit();
     return snapshot;
@@ -173,11 +173,11 @@ export function renderStalePrompt(snapshot: IndexSnapshot, stale: readonly { nam
 
 export function renderAudit(audit: CrossLibraryAudit): string {
   const heading = "Cross-Library Audit";
-  const summary = `Compared ${audit.comparedPairs} plausible cross-library pairs. Found ${audit.works.length} scholarly works; ${audit.missingFromMyLibrary.length} are absent from My Library; ${audit.discrepancies.length} matched pairs have metadata differences.`;
+  const summary = `Compared ${audit.comparedPairs} plausible cross-library pairs. Found ${audit.works.length} scholarly works; ${audit.missingFromMyLibrary.length} are absent from My Library.`;
   const examples = audit.missingFromMyLibrary.slice(0, 20).map(({ canonical }) => `• ${canonical.fields.title || "Untitled"} — ${canonical.ref.libraryName}`);
-  const differenceExamples = audit.discrepancies.slice(0, 10).map(({ left, right, differences }) => `• ${left.fields.title || "Untitled"} — ${left.ref.libraryName} / ${right.ref.libraryName}: ${differences.map(({ field }) => field).join(", ")}`);
   const missingSection = examples.length === 0 ? "No group-library-only works found." : `First ${examples.length} missing works:\n${examples.join("\n")}`;
-  const differenceSection = differenceExamples.length === 0 ? "No metadata differences among confirmed matches." : `First ${differenceExamples.length} metadata differences:\n${differenceExamples.join("\n")}`;
+  // One definition of "metadata difference" (Rule 7): the full Difference Engine, via its own report.
+  const differenceSection = "Field-by-field differences for My Library items: Tools → Metadata Differences in My Library…";
   return `${heading}\n\n${summary}\n\n${renderLinkedOracle(audit)}\n\n${missingSection}\n\n${differenceSection}`;
 }
 

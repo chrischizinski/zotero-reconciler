@@ -37,4 +37,19 @@ describe("index snapshot (§10 derived data, §32 plugin-owned storage)", () => 
     const current = [{ libraryID: 1, name: "My Library", version: 101 }, { libraryID: 2, name: "Group", version: 55 }, { libraryID: 4, name: "New", version: 1 }];
     expect(staleLibraries(snapshot, current).map((library) => library.libraryID)).toEqual([1, 4, 3]);
   });
+
+  it("an unsynced local edit leaves the sync version alone but moves the fingerprint → stale (same root cause as §40)", () => {
+    const withPrint = createSnapshot(audit, libraries.map((library) => ({ ...library, localChange: "10|2026-10-14 14:00:00" })), new Date("2026-10-14T14:00:00Z"));
+    const edited = libraries.map((library) => ({ ...library, localChange: library.libraryID === 1 ? "10|2026-10-14 14:34:55" : "10|2026-10-14 14:00:00" }));
+    expect(staleLibraries(withPrint, edited).map((library) => library.libraryID)).toEqual([1]);
+    expect(staleLibraries(withPrint, libraries.map((library) => ({ ...library, localChange: "10|2026-10-14 14:00:00" })))).toEqual([]);
+  });
+
+  it("a snapshot written before fingerprints existed cannot prove it is current → stale once", () => {
+    expect(staleLibraries(snapshot, libraries.map((library) => ({ ...library, localChange: "1|x" }))).map((library) => library.libraryID)).toEqual([1, 2, 3]);
+  });
+
+  it("no fingerprint available now (e.g. no DB access) → falls back to the version check alone", () => {
+    expect(staleLibraries(snapshot, libraries)).toEqual([]);
+  });
 });

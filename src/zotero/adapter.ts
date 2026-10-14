@@ -48,6 +48,27 @@ export interface ZoteroReadAPI {
   };
   /** `Zotero.URI`: resolves an item URI to its library and key without touching the database. */
   URI: { getURIItemLibraryKey(itemURI: string): { libraryID: number; key: string } | false };
+  /** Read-only query for the local-change fingerprint; absent in tests that do not need it. */
+  DB?: { valueQueryAsync(sql: string, params: unknown[]): Promise<unknown> };
+}
+
+/**
+ * Item count | latest clientDateModified, per library. Any local save, trash or erase changes
+ * it, including edits not yet synced (which leave `libraryVersion` alone). Read-only.
+ */
+const LOCAL_CHANGE_SQL = "SELECT COUNT(*) || '|' || IFNULL(MAX(clientDateModified), '') FROM items WHERE libraryID = ?";
+
+async function localChange(api: ZoteroReadAPI, libraryID: number): Promise<string | undefined> {
+  if (!api.DB) return undefined;
+  const value = await api.DB.valueQueryAsync(LOCAL_CHANGE_SQL, [libraryID]);
+  return typeof value === "string" ? value : undefined;
+}
+
+async function libraryVersions(api: ZoteroReadAPI, libraries: readonly ZoteroLibrary[]): Promise<LibraryVersion[]> {
+  return Promise.all(libraries.map(async (library) => {
+    const fingerprint = await localChange(api, library.libraryID);
+    return { libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0, ...(fingerprint !== undefined ? { localChange: fingerprint } : {}) };
+  }));
 }
 
 /** The data types `toScannedItem` reads. Loaded per library in one query each, skipping already-loaded items. */
@@ -75,6 +96,8 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditRe
   const libraries = api.Libraries.getAll().filter(isBibliographicLibrary);
   const myLibraryID = api.Libraries.userLibraryID;
   if (myLibraryID === undefined) throw new Error("Zotero did not provide the My Library identifier.");
+  // Fingerprint BEFORE reading items: an edit landing mid-scan then makes the snapshot look stale, never fresh.
+  const versions = await libraryVersions(api, libraries);
   const libraryItems = await Promise.all(libraries.map(async (library) => ({
     library,
     items: await loadedRegularItems(api, library.libraryID)
@@ -82,15 +105,14 @@ export async function auditLibraries(api: ZoteroReadAPI): Promise<LibraryAuditRe
   const items = libraryItems.flatMap(({ library, items }) => items.map((item) => toScannedItem(item, library.name, api.URI)));
   return {
     audit: auditCrossLibraries(items, myLibraryID),
-    libraries: libraries.map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 })),
+    libraries: versions,
     items,
     myLibraryID
   };
 }
 
-export function currentLibraryVersions(api: ZoteroReadAPI): readonly LibraryVersion[] {
-  return api.Libraries.getAll().filter(isBibliographicLibrary)
-    .map((library) => ({ libraryID: library.libraryID, name: library.name, version: library.libraryVersion ?? 0 }));
+export async function currentLibraryVersions(api: ZoteroReadAPI): Promise<readonly LibraryVersion[]> {
+  return libraryVersions(api, api.Libraries.getAll().filter(isBibliographicLibrary));
 }
 
 export interface CopyMatch {

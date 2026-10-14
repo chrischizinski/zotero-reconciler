@@ -18,6 +18,12 @@ export interface SnapshotLibrary {
   name: string;
   /** Zotero's library version at scan time; a later version means the snapshot may be stale (§29). */
   version: number;
+  /**
+   * Local-change fingerprint (item count | latest clientDateModified). `version` moves only on
+   * sync, so an unsynced local edit leaves it unchanged; this catches those. Absent in
+   * snapshots written before 2026-10-14.
+   */
+  localChange?: string;
 }
 
 export interface SnapshotWork {
@@ -37,13 +43,14 @@ export interface LibraryVersion {
   libraryID: number;
   name: string;
   version: number;
+  localChange?: string;
 }
 
 export function createSnapshot(audit: CrossLibraryAudit, libraries: readonly LibraryVersion[], scannedAt: Date): IndexSnapshot {
   return {
     schemaVersion: 1,
     scannedAt: scannedAt.toISOString(),
-    libraries: libraries.map(({ libraryID, name, version }) => ({ libraryID, name, version })),
+    libraries: libraries.map(({ libraryID, name, version, localChange }) => ({ libraryID, name, version, ...(localChange !== undefined ? { localChange } : {}) })),
     works: audit.works.map(toSnapshotWork)
   };
 }
@@ -103,10 +110,18 @@ export class WorkLookup {
   }
 }
 
-/** Libraries whose Zotero version moved since the snapshot, plus any added or removed since. */
+/**
+ * Libraries whose sync version OR local-change fingerprint moved since the snapshot, plus any
+ * added or removed since. A fingerprint we can read now but the snapshot lacks counts as
+ * changed: an old snapshot cannot prove it saw the current local state.
+ */
 export function staleLibraries(snapshot: IndexSnapshot, current: readonly LibraryVersion[]): readonly LibraryVersion[] {
-  const snapshotVersions = new Map(snapshot.libraries.map((library) => [library.libraryID, library.version]));
-  const changed = current.filter((library) => snapshotVersions.get(library.libraryID) !== library.version);
+  const before = new Map(snapshot.libraries.map((library) => [library.libraryID, library]));
+  const changed = current.filter((library) => {
+    const old = before.get(library.libraryID);
+    if (!old || old.version !== library.version) return true;
+    return library.localChange !== undefined && old.localChange !== library.localChange;
+  });
   const currentIDs = new Set(current.map((library) => library.libraryID));
   const removed = snapshot.libraries.filter((library) => !currentIDs.has(library.libraryID));
   return [...changed, ...removed];

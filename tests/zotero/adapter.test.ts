@@ -127,6 +127,19 @@ describe("Zotero read adapter", () => {
     expect(audit.missingFromMyLibrary).toHaveLength(0);
   });
 
+  it("records each library's local-change fingerprint, read BEFORE the items so a mid-scan edit looks stale, never fresh", async () => {
+    const events: string[] = [];
+    const api = {
+      Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 40 }], userLibraryID: 1 },
+      Items: { getAll: async () => { events.push("items"); return []; }, loadDataTypes: async () => undefined },
+      URI: uri,
+      DB: { valueQueryAsync: async (sql: string, params: unknown[]) => { events.push(`db:${params[0]}`); expect(sql).toMatch(/^SELECT COUNT\(\*\)/); return "12|2026-10-14 14:36:29"; } }
+    };
+    const { libraries } = await auditLibraries(api);
+    expect(libraries).toEqual([{ libraryID: 1, name: "My Library", version: 40, localChange: "12|2026-10-14 14:36:29" }]);
+    expect(events).toEqual(["db:1", "items"]);
+  });
+
   it("loads field and creator data before reading any candidate: getAll() returns unloaded shells", async () => {
     const shells = new Map<string, { item: ZoteroItem; loaded: boolean }>();
     const shell = (libraryID: number, key: string, loaded: boolean): ZoteroItem => {

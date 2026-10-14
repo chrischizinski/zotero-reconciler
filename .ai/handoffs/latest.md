@@ -384,3 +384,14 @@ Still open from the review (not changed):
   unsynced local edits (same root cause as §40); (2) old 5-field "discrepancies" line in the
   audit report disagrees with the new report — replace with a pointer; (3) user decision:
   should MISSING identifier fields (DOI/ISBN/ISSN) be pre-selected? (Tier 2/0-only cases.)
+
+## 2026-10-14 two small fixes before slice 3
+
+- Stale-index prompt: snapshot now stores per-library `localChange` = item count | latest
+  clientDateModified (read-only Zotero.DB query, taken before reading items). Unsynced local
+  edits now trigger "Rescan now?". Pre-fingerprint snapshots count as stale once.
+- Audit text no longer prints the old 5-field "metadata differences"; points to Tools →
+  Metadata Differences. Cleanup still open: `audit.discrepancies` is computed but unused,
+  and `fieldComparator.ts` only feeds Find Copies' "Differences:" line — retire both in favour
+  of the Difference Engine (separate change).
+- MISSING DOI/ISBN/ISSN never pre-selected (7d21383). Slice 3 must honour the same rule.
