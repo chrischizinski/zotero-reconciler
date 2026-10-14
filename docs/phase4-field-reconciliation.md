@@ -1,6 +1,6 @@
 # Phase 4 design — field-level metadata reconciliation
 
-Status: design only, 2026-10-14. No Phase 4 code exists. `design.md` §11–§18, §24–§27,
+Status: design accepted 2026-10-14 (decisions A–G all as recommended, §12); slice 1 in progress. `design.md` §11–§18, §24–§27,
 §37–§40, §42 (Phase 4) and §48 are the governing spec; this document turns them into an
 implementable architecture, reuses the Phase 3 pipeline (`docs/phase3-write-safeguards.md`),
 and records where the spec's assumptions did not survive contact with Zotero 10.0.6 source
@@ -303,6 +303,8 @@ change.
 | E | Creators | (1) whole list as one unit; (2) per-creator merge | (2) needs creator alignment and invites partial author lists | **(1)** |
 | F | Pair evidence | (1) direct target↔source EXACT/HIGH; (2) any member of the same cluster | (2) lets one bad link spread values across a cluster | **(1)** |
 | G | First slice | (1) single-work Compare Copies; (2) batch Fill Missing first | (2) is the bigger win but the larger blast radius for the first in-place edit the plugin ever makes | **(1)** |
+
+Decided 2026-10-14: A (1), B (1), C (1), D (1), E (1), F (1), G (1).
 
 ## 13. Deferred (not Phase 4)
 
