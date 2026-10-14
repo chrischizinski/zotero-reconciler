@@ -2,6 +2,7 @@ import { CoverageColumn, type ItemTreeManagerAPI } from "../zotero/coverageColum
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
 import { ImportCommand } from "../zotero/importCommand.js";
 import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
+import { ReconcileCommand } from "../zotero/reconcileCommand.js";
 import { TransactionStore, type LogFileSystem } from "../zotero/transactionStore.js";
 import { zoteroWriteAPI, type ZoteroWriteAPI } from "../zotero/writeAdapter.js";
 
@@ -13,6 +14,8 @@ declare const Zotero: {
   Libraries: unknown;
   Items: unknown;
   URI: unknown;
+  ItemFields: unknown;
+  CreatorTypes: unknown;
   DataDirectory: { dir: string };
   ItemTreeManager: ItemTreeManagerAPI;
   Prefs: { get(pref: string, global?: boolean): unknown };
@@ -25,6 +28,7 @@ declare const PathUtils: { join(...parts: string[]): string };
 
 let findCopiesCommand: FindCopiesCommand | undefined;
 let importCommand: ImportCommand | undefined;
+let reconcileCommand: ReconcileCommand | undefined;
 let coverageColumn: CoverageColumn | undefined;
 
 /**
@@ -32,6 +36,8 @@ let coverageColumn: CoverageColumn | undefined;
  * Set in the dev profile's prefs.js while the write engine is validated against real libraries.
  */
 const ENABLE_IMPORT_PREF = "extensions.zotero-library-reconciler.enableImport";
+/** Phase 4 gate, separate from import: field edits are a different risk (docs/phase4-field-reconciliation.md §11). */
+const ENABLE_RECONCILE_PREF = "extensions.zotero-library-reconciler.enableReconcile";
 
 type ReconcilerRuntime = {
   startup(): void;
@@ -56,9 +62,9 @@ function confirmDialog(message: string, title: string, yes: string): boolean {
   return prompt.confirmEx(Zotero.getMainWindow(), title, message, flags, yes, "Cancel", null, null, {}) === 0;
 }
 
-function importEnabled(): boolean {
+function prefEnabled(pref: string): boolean {
   try {
-    return Zotero.Prefs.get(ENABLE_IMPORT_PREF, true) === true;
+    return Zotero.Prefs.get(pref, true) === true;
   } catch {
     return false;
   }
@@ -78,27 +84,39 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     });
     findCopiesCommand = command;
     coverageColumn = new CoverageColumn(Zotero.ItemTreeManager, () => command.workLookup);
-    if (importEnabled()) {
+    const transactionStore = () => TransactionStore.inDataDirectory(IOUtils, Zotero.DataDirectory.dir, (...parts) => PathUtils.join(...parts));
+    if (prefEnabled(ENABLE_IMPORT_PREF)) {
       importCommand = new ImportCommand(Zotero as ConstructorParameters<typeof ImportCommand>[0], {
         writeAPI: zoteroWriteAPI(Zotero as unknown as ZoteroWriteAPI),
-        store: TransactionStore.inDataDirectory(IOUtils, Zotero.DataDirectory.dir, (...parts) => PathUtils.join(...parts)),
+        store: transactionStore(),
         refreshIndex: () => command.refreshIndex(),
         confirm: (message) => confirmDialog(message, "Undo Last Import Session", "Move to Trash"),
+      });
+    }
+    if (prefEnabled(ENABLE_RECONCILE_PREF)) {
+      reconcileCommand = new ReconcileCommand(Zotero as ConstructorParameters<typeof ReconcileCommand>[0], {
+        writeAPI: zoteroWriteAPI(Zotero as unknown as ZoteroWriteAPI),
+        store: transactionStore(),
+        confirm: (message) => confirmDialog(message, "Undo Last Metadata Update", "Restore"),
       });
     }
     for (const window of Zotero.getMainWindows()) {
       command.register(window);
       importCommand?.register(window);
+      reconcileCommand?.register(window);
     }
     coverageColumn.register();
     void command.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
-    log(importCommand ? `Started; Phase 3 import ENABLED by ${ENABLE_IMPORT_PREF}.` : "Started read-only matching foundation.");
+    const enabled = [importCommand ? `Phase 3 import (${ENABLE_IMPORT_PREF})` : "", reconcileCommand ? `Phase 4 metadata update (${ENABLE_RECONCILE_PREF})` : ""].filter(Boolean);
+    log(enabled.length > 0 ? `Started; ENABLED: ${enabled.join(", ")}.` : "Started read-only matching foundation.");
   },
   shutdown(): void {
     coverageColumn?.unregister();
     coverageColumn = undefined;
     importCommand?.unregister();
     importCommand = undefined;
+    reconcileCommand?.unregister();
+    reconcileCommand = undefined;
     findCopiesCommand?.unregister();
     findCopiesCommand = undefined;
     log("Stopped.");
@@ -106,9 +124,11 @@ runtimeGlobal.ZoteroLibraryReconciler = {
   onMainWindowLoad(window: Window): void {
     findCopiesCommand?.register(window);
     importCommand?.register(window);
+    reconcileCommand?.register(window);
   },
   onMainWindowUnload(window: Window): void {
     findCopiesCommand?.unregister(window);
     importCommand?.unregister(window);
+    reconcileCommand?.unregister(window);
   },
 };

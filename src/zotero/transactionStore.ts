@@ -1,4 +1,4 @@
-import { parseLog, serializeLog, type ImportLogEntry, type LogEntry } from "../write/transactionLog.js";
+import { parseLog, serializeLog, type LogEntry } from "../write/transactionLog.js";
 
 /** The subset of Gecko's `IOUtils` the store needs; injected so tests need no filesystem. */
 export interface LogFileSystem {
@@ -37,10 +37,10 @@ export class TransactionStore {
     return parseLog(await this.fs.readUTF8(this.path));
   }
 
-  /** Rewrites the one import entry that an undo reversed; the only non-append write, on a small file, via a temp path. */
-  async markUndone(importID: string, undoneAt: string): Promise<void> {
+  /** Rewrites the one import or metadata entry that an undo reversed; the only non-append write, on a small file, via a temp path. */
+  async markUndone(entryID: string, undoneAt: string): Promise<void> {
     const { entries } = await this.readAll();
-    const updated = entries.map((entry) => (entry.action === "import" && entry.id === importID ? { ...entry, undoneAt } satisfies ImportLogEntry : entry));
+    const updated = entries.map((entry) => ((entry.action === "import" || entry.action === "update_metadata") && entry.id === entryID ? { ...entry, undoneAt } : entry));
     await this.fs.writeUTF8(this.path, serializeLog(updated), { mode: "overwrite", tmpPath: `${this.path}.tmp` });
   }
 }

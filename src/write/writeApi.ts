@@ -1,8 +1,12 @@
+import type { FieldValue } from "../comparison/differenceEngine.js";
+
 /**
  * The complete set of mutations the plugin can perform, as an interface (Phase 3 invariant 1,
  * docs/phase3-write-safeguards.md §4). `src/zotero/writeAdapter.ts` is the only
  * implementation that touches Zotero; tests use a recording fake. There is deliberately no
- * `setField`, no `erase`, and no collection operation outside the import collection.
+ * `erase` and no collection operation outside the import collection. The one field edit,
+ * `updateFields` (Phase 4), is compare-and-swap on an allowlist of bibliographic fields of a
+ * My Library item (docs/phase4-field-reconciliation.md §6, §10).
  */
 
 export interface WriteItemRef {
@@ -30,6 +34,34 @@ export interface CopyOptions {
   copyTags: boolean;
 }
 
+/** One field to set on the target, only if it still holds `expected` (the value previewed). */
+export interface FieldWrite {
+  /** Item type's field name, or `creators` for the whole creator list. */
+  name: string;
+  expected: FieldValue;
+  next: FieldValue;
+}
+
+/** A source field that must still hold the previewed value, so the log's "from X" stays true. */
+export interface FieldCheck {
+  ref: WriteItemRef;
+  name: string;
+  expected: FieldValue;
+}
+
+export type UpdateStatus = "written" | "target-changed" | "source-changed" | "target-missing";
+
+export interface UpdateResult {
+  status: UpdateStatus;
+  /** Which field or item failed the re-check, for the report. */
+  detail?: string;
+  /**
+   * On `written`: each field's value as Zotero stored it, keyed by name. Can differ from
+   * `next` (Zotero strips newlines from single-line fields); the log and the undo use this.
+   */
+  stored?: Readonly<Record<string, FieldValue>>;
+}
+
 export interface WriteAPI {
   /** The user library's ID; Phase 3 only ever imports into it. */
   userLibraryID(): number;
@@ -53,4 +85,11 @@ export interface WriteAPI {
   copyItems(sources: readonly WriteItemRef[], options: CopyOptions): Promise<WriteItemRef[]>;
   /** Session undo: moves the given items to the trash (recoverable), with an undo-history label. */
   trashItems(refs: readonly WriteItemRef[]): Promise<void>;
+  /**
+   * Phase 4: in ONE transaction, re-read every source check and every target field; if any
+   * differs from what was previewed, write nothing and say which. Otherwise set all fields and
+   * save once with Zotero's `undo-action-edit-metadata`. Throws on a target outside My Library
+   * or a field outside the reconcilable allowlist.
+   */
+  updateFields(target: WriteItemRef, writes: readonly FieldWrite[], checks: readonly FieldCheck[]): Promise<UpdateResult>;
 }

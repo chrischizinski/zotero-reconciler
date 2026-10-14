@@ -47,7 +47,7 @@ out of scope (§13).
 | Type-correct field for a base field | `Zotero.ItemFields.getFieldIDFromTypeAndBase(typeID, baseField)`, `isValidForType(fieldID, typeID)` | e.g. base `publicationTitle` is `bookTitle` on a book section, `proceedingsTitle` on a conference paper. |
 | Native undo of field edits | `save({ undoAction: "undo-action-edit-metadata", undoActionArgs: { count } })` | **Covers fields and creators** (`Item._undoFieldMatches` handles `creators`, item-data fields, `itemTypeID`). The Fluent string `undo-action-edit-metadata` ships with Zotero — no plugin string needed. |
 | Native undo staleness | `UndoHistory._apply` checks `matchesUndoSnapshot` *inside the same transaction* before reverting | Zotero refuses to undo over a value changed since. Our plugin undo copies this design (§8). |
-| Detect a local edit | `clientDateModified` — updated on **every** local save | `version` is **not**: it changes only when sync assigns a new server version. |
+| Detect a local edit | `clientDateModified` — updated on **every** local save (a DB column; not loaded onto item objects) | `version` is **not**: it changes only when sync assigns a new server version. |
 
 ### 2.1 Correction to `design.md` §40 (target version check)
 
@@ -168,7 +168,7 @@ The plan stores, for each field to write, the target's **raw value as shown in t
 for each planned field:
     current = item.getField(field)            (or creators, as JSON)
     if current ≠ expected  → skip THIS ITEM (all its fields), reason "target changed"
-if the source copy has been edited or trashed since the preview → skip, reason "source changed"
+if a source field no longer holds the previewed value, or the source is trashed → skip, reason "source changed"
 otherwise setField / setCreators for every planned field, save with undoAction
 ```
 
@@ -176,9 +176,11 @@ otherwise setField / setCreators for every planned field, save with undoAction
   (`UndoHistory._apply`). A sync cannot sneak in between.
 - **Skip the whole item, not one field.** A partial update of one record from a preview the
   user no longer agrees with is worse than none; the item gets `[ Recompare ]`.
-- **The source check** uses `clientDateModified` (any local edit) and `deleted`; a synced
-  change also moves `version`. Reason: the log claims "value from Textbook item XYZ789". If
-  that item changed after the preview, the claim may be false. Rare; skipping is cheap.
+- **The source check** is a value compare too: each copied source field must still hold the
+  value previewed, and the source must not be trashed. Reason: the log claims "value from
+  Textbook item XYZ789". (Implementation note, 2026-10-14: `clientDateModified` is not loaded
+  onto Zotero item objects, so a value check is both available and more precise than a
+  timestamp.) Rare; skipping is cheap.
 - Batch semantics are §40 unchanged: skip and continue, never abort the session for one
   stale item, never write it anyway. Counts shown are actuals.
 
@@ -299,7 +301,7 @@ change.
 | A | Which libraries can be targets? | (1) My Library only; (2) any editable library | (2) writes other people's records, needs a per-library log/undo story, and can be rejected at sync by server-side permissions the client cannot see | **(1)**; group targets a later, opt-in phase |
 | B | `DIFFERENT` vs `CONFLICTING` | (1) as §4: DIFFERENT = one alternative, CONFLICTING = sources disagree; (2) collapse to one "review" class | (2) hides whether there is one candidate value or several | **(1)** |
 | C | Format-only differences | (1) IDENTICAL + note, not offered; (2) offered as DIFFERENT | (2) floods the preview with dash/case rows | **(1)** |
-| D | Staleness check | (1) field-value CAS in-transaction (+ source `clientDateModified`); (2) target `clientDateModified`; (3) `version` (spec) | (3) misses unsynced edits — unsafe. (2) is safe but also trips on unrelated tag/collection edits | **(1)** |
+| D | Staleness check | (1) field-value CAS in-transaction, target and source; (2) target `clientDateModified`; (3) `version` (spec) | (3) misses unsynced edits — unsafe. (2) is safe but also trips on unrelated tag/collection edits | **(1)** |
 | E | Creators | (1) whole list as one unit; (2) per-creator merge | (2) needs creator alignment and invites partial author lists | **(1)** |
 | F | Pair evidence | (1) direct target↔source EXACT/HIGH; (2) any member of the same cluster | (2) lets one bad link spread values across a cluster | **(1)** |
 | G | First slice | (1) single-work Compare Copies; (2) batch Fill Missing first | (2) is the bigger win but the larger blast radius for the first in-place edit the plugin ever makes | **(1)** |

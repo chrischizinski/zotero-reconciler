@@ -2,7 +2,8 @@ import { isCandidatePair } from "../matching/blocking.js";
 import { matchNormalizedItems } from "../matching/matcher.js";
 import { normalizeItem } from "../matching/normalize.js";
 import { auditCrossLibraries, type CrossLibraryAudit } from "../audit/crossLibraryAudit.js";
-import type { CreatorInput, LinkedRef, MatchResult, ScannedItem } from "../matching/types.js";
+import { RECONCILABLE_FIELDS, type FieldRecord, type RecordCreator, type RecordField, type ReconcilableField } from "../comparison/differenceEngine.js";
+import type { CreatorInput, ItemRef, LinkedRef, MatchResult, ScannedItem } from "../matching/types.js";
 import type { LibraryVersion } from "../works/indexSnapshot.js";
 
 export interface ZoteroCreator {
@@ -178,4 +179,64 @@ function toCreatorInput(creator: ZoteroCreator): CreatorInput {
     ...(creator.firstName ? { firstName: creator.firstName } : {}),
     ...(creator.fieldMode !== undefined ? { fieldMode: creator.fieldMode } : {})
   };
+}
+
+/** What Phase 4's field reader needs beyond the scan: type-aware field names and full creator JSON. */
+export interface ZoteroFieldItem extends ZoteroItem {
+  itemTypeID: number;
+  getCreatorsJSON(): RecordCreator[];
+}
+
+export interface ZoteroFieldReadAPI {
+  Items: {
+    getByLibraryAndKey(libraryID: number, key: string): ZoteroFieldItem | false;
+    loadDataTypes(items: ZoteroItem[], dataTypes: string[]): Promise<void>;
+  };
+  ItemFields: {
+    getID(field: string): number | false;
+    getName(fieldID: number): string | false;
+    isValidForType(fieldID: number, itemTypeID: number): boolean;
+    /** The type-specific field for a base field (`bookTitle` for `publicationTitle` on a book section); false if none. */
+    getFieldIDFromTypeAndBase(itemTypeID: number, baseField: string): number | false;
+  };
+  CreatorTypes: { getTypesForItemType(itemTypeID: number): { id: number; name: string }[] };
+}
+
+/**
+ * Phase 4 COMPARE-time read (docs/phase4-field-reconciliation.md §7): every reconcilable
+ * field of one item, under its own type's field name, plus creators with their types. Read
+ * only for the items being compared, so the library scan stays as cheap as it is.
+ */
+export async function readFieldRecord(api: ZoteroFieldReadAPI, ref: Omit<ItemRef, "version">): Promise<FieldRecord | undefined> {
+  const item = api.Items.getByLibraryAndKey(ref.libraryID, ref.itemKey);
+  if (!item || !item.isRegularItem()) return undefined;
+  await api.Items.loadDataTypes([item], ["itemData", "creators"]);
+  const fields: Partial<Record<ReconcilableField, RecordField>> = {};
+  for (const base of RECONCILABLE_FIELDS) {
+    const name = fieldNameFor(api, item.itemTypeID, base);
+    if (name) fields[base] = readField(item, base, name);
+  }
+  return {
+    ref: { ...ref, version: item.version },
+    itemType: item.itemType,
+    fields,
+    creators: item.getCreatorsJSON(),
+    validCreatorTypes: api.CreatorTypes.getTypesForItemType(item.itemTypeID).map((type) => type.name)
+  };
+}
+
+/** The base field itself if valid for the type, else the type's mapped field, else none (field absent on this type). */
+function fieldNameFor(api: ZoteroFieldReadAPI, itemTypeID: number, base: ReconcilableField): string | undefined {
+  const baseID = api.ItemFields.getID(base);
+  if (baseID && api.ItemFields.isValidForType(baseID, itemTypeID)) return base;
+  const mapped = api.ItemFields.getFieldIDFromTypeAndBase(itemTypeID, base);
+  return mapped ? api.ItemFields.getName(mapped) || undefined : undefined;
+}
+
+function readField(item: ZoteroFieldItem, base: ReconcilableField, name: string): RecordField {
+  const value = item.getField(name);
+  if (base !== "date" || !value) return { name, value };
+  // Multipart `2024-05-03 May 3, 2024`: the SQL part compares dates written differently (§4).
+  const sql = item.getField(name, true, true).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(sql) ? { name, value, key: sql } : { name, value };
 }

@@ -1,5 +1,7 @@
+import type { DifferenceClass, DifferenceField, FieldValue } from "../comparison/differenceEngine.js";
 import type { ImportOutcome } from "./importExecutor.js";
-import type { WriteItemRef } from "./writeApi.js";
+import type { ReconcileOutcome, ReconcileStatus } from "./reconcileExecutor.js";
+import type { FieldWrite, UpdateStatus, WriteItemRef } from "./writeApi.js";
 
 /**
  * §26 transaction log entries for Phase 3, as data. Append-only JSONL on disk
@@ -35,7 +37,70 @@ export interface UndoLogEntry {
   trashed: readonly WriteItemRef[];
 }
 
-export type LogEntry = ImportLogEntry | UndoLogEntry;
+/** One field edit as logged (design.md §26): old, new as stored, and which library supplied it. */
+export interface LoggedChange {
+  field: DifferenceField;
+  name: string;
+  old: FieldValue;
+  new: FieldValue;
+  class: DifferenceClass;
+  source: { libraryID: number; itemKey: string; libraryName: string };
+}
+
+/** Phase 4: one My Library item, edited (or not) in one transaction. */
+export interface MetadataLogEntry {
+  id: string;
+  action: "update_metadata";
+  confirmedAt: string;
+  target: { libraryID: number; itemKey: string; title: string };
+  status: ReconcileStatus;
+  detail?: string;
+  /** Present only when written. */
+  changes: readonly LoggedChange[];
+  /** Match evidence for each source library, so "why were these the same work?" stays answerable. */
+  evidence: readonly string[];
+  undoneAt?: string;
+}
+
+/** Plugin undo of a metadata entry; logged whether or not the revert could be applied. */
+export interface RevertLogEntry {
+  id: string;
+  action: "revert_metadata";
+  reverses: string;
+  at: string;
+  status: UpdateStatus | "failed";
+  detail?: string;
+}
+
+export type LogEntry = ImportLogEntry | UndoLogEntry | MetadataLogEntry | RevertLogEntry;
+
+export function metadataLogEntry(outcome: ReconcileOutcome, id: string): MetadataLogEntry {
+  const { plan } = outcome;
+  const written = outcome.status === "written";
+  return {
+    id,
+    action: "update_metadata",
+    confirmedAt: plan.confirmedAt ?? "",
+    target: { libraryID: plan.target.libraryID, itemKey: plan.target.itemKey, title: plan.target.title },
+    status: outcome.status,
+    ...(outcome.detail ? { detail: outcome.detail } : {}),
+    changes: written ? plan.edits.map((edit) => ({
+      field: edit.field, name: edit.name, old: edit.old,
+      new: outcome.stored?.[edit.name] ?? edit.next,
+      class: edit.class, source: edit.source
+    })) : [],
+    evidence: plan.evidence
+  };
+}
+
+/** The reverse edit: restore `old` only where the field still holds what the session stored. */
+export function revertWrites(entry: MetadataLogEntry): FieldWrite[] {
+  return entry.changes.map((change) => ({ name: change.name, expected: change.new, next: change.old }));
+}
+
+export function revertLogEntry(entry: MetadataLogEntry, status: RevertLogEntry["status"], detail: string | undefined, id: string, at: Date): RevertLogEntry {
+  return { id, action: "revert_metadata", reverses: entry.id, at: at.toISOString(), status, ...(detail ? { detail } : {}) };
+}
 
 export function importLogEntry(outcome: ImportOutcome, id: string): ImportLogEntry {
   const { plan } = outcome;
@@ -72,7 +137,7 @@ export function logEntryID(now: Date, random: () => number = Math.random): strin
 export function isLogEntry(value: unknown): value is LogEntry {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Partial<LogEntry>;
-  return typeof entry.id === "string" && (entry.action === "import" || entry.action === "undo");
+  return typeof entry.id === "string" && (entry.action === "import" || entry.action === "undo" || entry.action === "update_metadata" || entry.action === "revert_metadata");
 }
 
 /** One JSON object per line; malformed lines are dropped rather than failing the whole log (§40: fail loud elsewhere, not on read). */

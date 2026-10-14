@@ -50,7 +50,9 @@ function fakeWriteAPI(script: {
       created.push(...copies);
       return copies;
     },
-    trashItems: async (refs) => { calls.push(`trash:${refs.map((ref) => ref.itemKey).join(",")}`); }
+    trashItems: async (refs) => { calls.push(`trash:${refs.map((ref) => ref.itemKey).join(",")}`); },
+    // The import path must never edit an existing item's fields (Phase 3 invariant 1).
+    updateFields: async () => { throw new Error("import must not edit fields"); }
   };
   return { api, calls, created };
 }
