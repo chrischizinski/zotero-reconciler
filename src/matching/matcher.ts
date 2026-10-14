@@ -56,6 +56,14 @@ function matchByRules(left: NormalizedItem, right: NormalizedItem): MatchResult 
   const sharedIdentifiers = matchingIdentifiers(left, right);
   if (sharedIdentifiers.length > 0) {
     for (const identifier of sharedIdentifiers) evidence.push({ rule: "Tier 1", detail: `${identifier} identical.` });
+    // A shared identifier is only as good as the record that carries it. On real data
+    // (2026-10-14) a DOI copied onto the wrong item made two different papers EXACT, and
+    // Fill Missing then wrote one paper's volume/issue/pages into the other. So an identifier
+    // corroborates the titles; it never overrides a title disagreement (decision 2026-10-14).
+    if (titleRelation === "substitution") {
+      evidence.push({ rule: "§8.1", detail: "Shared identifier but the titles differ; one record may carry the wrong identifier. Manual review required." });
+      return result("review", "review", evidence, titleRelation, typeRelation);
+    }
     if (typeRelation === "related") {
       evidence.push({ rule: "§8.4", detail: `Related item types share an identifier; ${canonicalItemType(left.itemType, right.itemType)} is the canonical record.` });
     }

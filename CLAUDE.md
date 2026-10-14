@@ -69,7 +69,7 @@ Every relationship carries a confidence level and human-readable *evidence* expl
 | Tier | Criteria | Result |
 |---|---|---|
 | 0 | Zotero `owl:sameAs` linked-item relation (user copied one from the other) | corroborates: rules match → `EXACT`; rules deny → `REVIEW` (link may be stale) — never overrides a denial (§8.0a) |
-| 1 | Exact persistent ID (DOI/PMID/arXiv; ISBN + compatible type) | `EXACT` — auto-reconcilable |
+| 1 | Exact persistent ID (DOI/PMID/arXiv; ISBN + compatible type) | `EXACT` — auto-reconcilable; but titles SUBSTITUTION → `REVIEW` (the ID may be on the wrong record, §8.1) |
 | 2 | Normalized title exact + first author compatible + year exact | `HIGH` — auto-reconcilable |
 | 3 | Title similarity + author similarity + compatible year | `POSSIBLE` — manual review required |
 | 4 | No match | unique in selected set (feeds "Missing from My Library") |

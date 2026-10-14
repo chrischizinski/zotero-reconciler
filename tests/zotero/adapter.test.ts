@@ -66,7 +66,7 @@ describe("Zotero read adapter", () => {
 
   it("scans only other libraries and excludes non-bibliographic records", async () => {
     const source = zoteroItem({ fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
-    const copy = zoteroItem({ libraryID: 2, key: "BBBB2222", fields: { title: "Different display title", DOI: "10.1/example" } });
+    const copy = zoteroItem({ libraryID: 2, key: "BBBB2222", fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
     const attachment = zoteroItem({ libraryID: 2, isRegularItem: () => false });
     const result = await findCopies({
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Group", libraryType: "group" }] },

@@ -28,19 +28,19 @@ describe("normalization", () => {
 
 describe("matching regression fixtures (§46)", () => {
   it("matches DOI proxy and case variants exactly (Tier 1, §7 DOI normalization)", () => {
-    const result = matchItems(item({ fields: { title: "A", doi: "10.1002/JWMG.12345" } }), item({ fields: { title: "B", doi: "https://doi.org/10.1002/jwmg.12345" } }));
+    const result = matchItems(item({ fields: { title: "A", doi: "10.1002/JWMG.12345" } }), item({ fields: { title: "A", doi: "https://doi.org/10.1002/jwmg.12345" } }));
     expect(result).toMatchObject({ verdict: "match", tier: "exact" });
     expect(result.evidence[0]).toMatchObject({ rule: "Tier 1", detail: "doi identical." });
   });
 
   it("matches ISBN-10 against its ISBN-13 form (Tier 1, §7 ISBN canonicalization)", () => {
-    const result = matchItems(item({ itemType: "book", fields: { title: "A", isbn: "0-306-40615-2" } }), item({ itemType: "book", fields: { title: "B", isbn: "978-0-306-40615-7" } }));
+    const result = matchItems(item({ itemType: "book", fields: { title: "A", isbn: "0-306-40615-2" } }), item({ itemType: "book", fields: { title: "A", isbn: "978-0-306-40615-7" } }));
     expect(result).toMatchObject({ verdict: "match", tier: "exact" });
     expect(result.evidence[0]).toMatchObject({ rule: "Tier 1", detail: "isbn13 identical." });
   });
 
   it("matches on a PMID that lives only in Extra (Tier 1, §7 extra parsing)", () => {
-    const result = matchItems(item({ fields: { title: "A", extra: "PMID: 38472910" } }), item({ fields: { title: "B", extra: "PMID: 38472910" } }));
+    const result = matchItems(item({ fields: { title: "A", extra: "PMID: 38472910" } }), item({ fields: { title: "A", extra: "PMID: 38472910" } }));
     expect(result).toMatchObject({ verdict: "match", tier: "exact" });
     expect(result.evidence[0]).toMatchObject({ rule: "Tier 1", detail: "pmid identical." });
   });
@@ -195,7 +195,7 @@ describe("rules learned from real-library validation (2026-09-17)", () => {
   it("still denies book sections whose ISBNs differ (D2) and matches books whose ISBNs agree (Tier 1)", () => {
     const denied = matchItems(item({ itemType: "bookSection", fields: { isbn: "0-306-40615-2" } }), item({ itemType: "bookSection", fields: { isbn: "978-1-4214-4657-8" } }));
     expect(denied.evidence[0]).toMatchObject({ rule: "D2" });
-    expect(matchItems(item({ itemType: "book", fields: { isbn: "0-306-40615-2" } }), item({ itemType: "book", fields: { title: "Other", isbn: "978-0-306-40615-7" } }))).toMatchObject({ tier: "exact" });
+    expect(matchItems(item({ itemType: "book", fields: { isbn: "0-306-40615-2" } }), item({ itemType: "book", fields: { isbn: "978-0-306-40615-7" } }))).toMatchObject({ tier: "exact" });
   });
 
   it("requires ADDITION-ONLY to be an ordered prefix, not a word subset", () => {
@@ -225,6 +225,33 @@ describe("rules learned from real-library validation (2026-09-17)", () => {
       .toMatchObject({ verdict: "match", tier: "high", titleRelation: "equivalent" });
     expect(matchItems(item({ fields: { title: "The role of cognitions in human–coyote interactions" } }), item({ fields: { title: "The role of cognitions in human-coyote interactions" } })))
       .toMatchObject({ verdict: "match", tier: "high", titleRelation: "equivalent" });
+  });
+});
+
+describe("a shared identifier never overrides a title disagreement (decision 2026-10-14)", () => {
+  it("a DOI copied onto the wrong paper → REVIEW, not EXACT (real case: WANHAPWI / 4QS2ARJQ)", () => {
+    const result = matchItems(
+      item({ fields: { title: "Attitudes about the two-tier duck regulations by current Nebraska and South Dakota hunters", date: "2016", doi: "10.1002/wsb.1241" } }),
+      item({ fields: { title: "Constraints to waterfowl hunting by hunters and anglers", date: "2016", doi: "10.1002/wsb.1241" } })
+    );
+    expect(result).toMatchObject({ verdict: "review", tier: "review", titleRelation: "substitution" });
+    expect(result.evidence.map((e) => e.rule)).toEqual(["Tier 1", "§8.1"]);
+  });
+
+  it("a one-word spelling variant with a shared DOI is REVIEW too: strict by choice, a safe miss (option 1)", () => {
+    const result = matchItems(item({ fields: { title: "Why are public values toward wildlife changing?", doi: "10.1080/716100425" } }), item({ fields: { title: "Why are public values towards wildlife changing?", doi: "10.1080/716100425" } }));
+    expect(result).toMatchObject({ verdict: "review", tier: "review" });
+  });
+
+  it("a shared DOI with an added subtitle, or a missing title, stays EXACT: the titles do not disagree", () => {
+    expect(matchItems(item({ fields: { title: "Duck banding", doi: "10.1/d" } }), item({ fields: { title: "Duck banding: returns in the central flyway", doi: "10.1/d" } }))).toMatchObject({ tier: "exact", titleRelation: "addition-only" });
+    expect(matchItems(item({ fields: { title: "", doi: "10.1/d" } }), item({ fields: { title: "Duck banding", doi: "10.1/d" } }))).toMatchObject({ tier: "exact", titleRelation: "missing" });
+  });
+
+  it("a Zotero link cannot lift it back to EXACT: the link corroborates, never overrides (§8.0a)", () => {
+    const left = item({ fields: { title: "Attitudes about the two-tier duck regulations", doi: "10.1002/wsb.1241" }, linkedItems: [{ libraryID: 2, itemKey: "BBBB2222" }] });
+    const right = item({ ref: { libraryID: 2, libraryName: "Group", itemKey: "BBBB2222", version: 1 }, fields: { title: "Constraints to waterfowl hunting by hunters and anglers", doi: "10.1002/wsb.1241" } });
+    expect(matchItems(left, right)).toMatchObject({ verdict: "review", tier: "review" });
   });
 });
 

@@ -445,3 +445,24 @@ Still open from the review (not changed):
 - Removed `src/comparison/fieldComparator.ts` (+ its 1 test) and the unused
   `audit.discrepancies` / `WorkDiscrepancy`. design.md §45 layout still names
   fieldComparator.ts; the module is `differenceEngine.ts` (spec not edited).
+
+## 2026-10-14 SAFETY FIX — shared identifier no longer overrides a title disagreement
+
+- Found while preparing the Phase 3 decisions: Tier 1 returned EXACT on a shared DOI even
+  with unrelated titles. Real case: My Library WANHAPWI "Attitudes about the two-tier duck
+  regulations…" carries DOI 10.1002/wsb.1241 of "Constraints to waterfowl hunting…" (hdfw-book
+  4QS2ARJQ); Fill Missing Run B wrote publicationTitle/volume/issue/pages from the wrong paper
+  (undone; verified 0 fields left). Plugin has only run in the dev profile.
+- Decision (user, option 1): titles SUBSTITUTION + shared identifier → REVIEW (§8.1 evidence).
+  No near-typo exception. design.md Tier 1 + CLAUDE.md tier table updated.
+- Real data (DB copy, matcher re-run via vite-node probe in scratchpad/probe): EXACT 236 → 228,
+  all 228 titles EQUIVALENT; confirmed pairs 967 → 959.
+- Root cause in data: 707 My Library items added 2025-03-12; that batch carries many DOIs of
+  other papers (≈7 of the 17 review pairs; 10.1002/jwmg.22202 on 4 My Library items). Local
+  detection only catches collisions; reliable check needs Crossref (Phase 6).
+- 212 tests; mutation (guard removed) → 3 fail. Old Tier 1 tests used titles "A"/"B" (encoded
+  the defect) — fixed to equal titles.
+- Phase 3 decisions evidence ready (17 review pairs from DB): stale links #1 #2 #4 #7 #11 #14
+  #16 #17 (+#6 swapped title/bookTitle); data errors #3 #8 (wrong DOI in My Library), #9 #12
+  (wrong type in My Library), #13 (1933 in hdfw-book); policy #5 #10 (edition/version), #15
+  (conference paper vs proceedings journal article).

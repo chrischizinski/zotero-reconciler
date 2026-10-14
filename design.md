@@ -498,6 +498,16 @@ so ISBN is identity only when both records are `book` — Zotero's own rule. Val
 (2026-09-17): 21 chapters of one volume produced 210 false Tier 1 matches before this
 restriction. ISBN still participates in D2 and in blocking for any item type.
 
+**A shared identifier never overrides a title disagreement (decision 2026-10-14).** If the
+titles are SUBSTITUTION (§8.3), a shared identifier gives REVIEW, not EXACT, with evidence
+"Shared identifier but the titles differ; one record may carry the wrong identifier."
+EQUIVALENT, ADDITION-ONLY and a missing title keep Tier 1. Validation (2026-10-14): a DOI
+copied onto the wrong My Library item made two different papers EXACT, and batch Fill
+Missing wrote one paper's journal, volume, issue and pages into the other (dev profile,
+undone). On the user's data 8 of 236 EXACT pairs had substituted titles: 1–2 different
+papers, 6 spelling variants of the same work. The spelling variants become safe misses
+(§48) by choice; a near-typo exception was declined.
+
 Example:
 
 ```text
