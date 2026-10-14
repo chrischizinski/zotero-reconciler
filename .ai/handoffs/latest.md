@@ -374,3 +374,13 @@ Still open from the review (not changed):
   without marking the entry undone — the CAS path exercised against the real DB.
 - Stale-between-preview-and-confirm cannot be produced by hand (preview is modal); covered
   by writeAdapter tests. Detail wording made neutral ("no longer holds the expected value").
+
+## 2026-10-14 Phase 4 slice 2 live (5d4880d)
+
+- Tools → Metadata Differences in My Library…: 809 My Library items with a strong match,
+  233 with offerable differences, 181 with fillable (MISSING) fields. Top rows: 5–7 missing
+  fields each (abstract, volume, issue, DOI, ISSN, url, publisher) vs creel / hdfw-book.
+- Open issues found: (1) startup stale-index prompt uses libraryVersion only → misses
+  unsynced local edits (same root cause as §40); (2) old 5-field "discrepancies" line in the
+  audit report disagrees with the new report — replace with a pointer; (3) user decision:
+  should MISSING identifier fields (DOI/ISBN/ISSN) be pre-selected? (Tier 2/0-only cases.)
