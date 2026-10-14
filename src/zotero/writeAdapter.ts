@@ -155,10 +155,10 @@ export function zoteroWriteAPI(zotero: ZoteroWriteAPI): WriteAPI {
       return zotero.DB.executeTransaction(async () => {
         for (const { check, source } of sources) {
           if (!source || source.deleted) return { status: "source-changed", detail: `The source item ${check.ref.libraryID}:${check.ref.itemKey} was deleted or trashed.` };
-          if (!sameValue(readValue(source, check.name), check.expected)) return { status: "source-changed", detail: `${check.name} changed in the source item since the preview.` };
+          if (!sameValue(readValue(source, check.name), check.expected)) return { status: "source-changed", detail: `${check.name} in the source item no longer holds the expected value.` };
         }
         for (const write of writes) {
-          if (!sameValue(readValue(target, write.name), write.expected)) return { status: "target-changed", detail: `${write.name} changed in My Library since the preview.` };
+          if (!sameValue(readValue(target, write.name), write.expected)) return { status: "target-changed", detail: `${write.name} in My Library no longer holds the expected value.` };
         }
         for (const write of writes) applyValue(target, write);
         await target.save({ skipSelect: true, undoAction: EDIT_UNDO_ACTION, undoActionArgs: { count: 1 } });

@@ -366,3 +366,11 @@ Still open from the review (not changed):
   3. Edit → Undo → fields cleared. Then Tools → Undo Last Metadata Update → expect
      "Nothing was restored" (already reverted).
   4. Redo update; edit issue by hand between preview and confirm → expect target-changed.
+- LIVE 2026-10-14 (dev profile): Compare Copies on 2ZTHYBBJ wrote volume 34 / issue 4 /
+  pages 786-794 from hdfw-book KRPTRALU. DB: target fields set, target `version` stayed 3456
+  (synced=0, clientDateModified bumped — the §40 correction confirmed live), source row
+  unchanged. Log entry matched DB. Edit → Undo cleared the fields; Tools → Undo Last
+  Metadata Update then refused (`target-changed`, volume) and logged `revert_metadata`
+  without marking the entry undone — the CAS path exercised against the real DB.
+- Stale-between-preview-and-confirm cannot be produced by hand (preview is modal); covered
+  by writeAdapter tests. Detail wording made neutral ("no longer holds the expected value").
