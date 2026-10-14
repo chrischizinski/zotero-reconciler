@@ -72,23 +72,36 @@ export function reconcilePreviewModel(title: string, differences: readonly Field
   const ticked = rows.filter((row) => row.defaultChoice >= 0).length;
   return {
     title,
-    summary: `${sources.length} matched cop${sources.length === 1 ? "y" : "ies"} in other libraries. ${offerable} field${offerable === 1 ? "" : "s"} can be updated in My Library; ${ticked} pre-selected because My Library has no value and every other copy agrees. Differences and conflicts are left as they are unless you choose a value. Only the My Library item changes; the other copies are never edited.`,
+    summary: `${sources.length} matched cop${sources.length === 1 ? "y" : "ies"} in other libraries. ${offerable} field${offerable === 1 ? "" : "s"} can be updated in My Library; ${ticked} pre-selected because My Library has no value and every other copy agrees (identifiers excepted). Differences and conflicts are left as they are unless you choose a value. Only the My Library item changes; the other copies are never edited.`,
     sources: sources.map(({ ref, evidence }) => ({ label: ref.libraryName, evidence })),
     rows
   };
 }
 
+/**
+ * Identifiers are never pre-selected (decision 2026-10-14). A MISSING DOI/ISBN/ISSN only
+ * occurs when the match did not rest on that identifier (Tier 0 link or Tier 2 bibliographic),
+ * so nothing has verified the source's value — and a wrong identifier copied into My Library
+ * then misleads every later match (§46 "wrong DOI in one library").
+ */
+const UNVERIFIED_IDENTIFIERS: ReadonlySet<string> = new Set(["DOI", "ISBN", "ISSN"]);
+
 function previewRow(difference: FieldDifference): ReconcilePreviewRow {
   const offerable = difference.targetName !== undefined && difference.notOffered === undefined && difference.alternatives.length > 0;
   const missingInTarget = difference.class === "MISSING" && difference.missingIn === "target";
+  const identifier = UNVERIFIED_IDENTIFIERS.has(difference.field);
   return {
     field: difference.field,
     class: difference.class,
     targetDisplay: display(difference.targetValue) || "—",
     choices: difference.alternatives.map((alternative, index) => ({ index, label: choiceLabel(alternative) })),
-    defaultChoice: offerable && missingInTarget ? 0 : -1,
+    defaultChoice: offerable && missingInTarget && !identifier ? 0 : -1,
     offerable,
-    notes: [...difference.notes, ...(difference.notOffered ? [`Not offered: ${difference.notOffered}.`] : [])]
+    notes: [
+      ...difference.notes,
+      ...(offerable && missingInTarget && identifier ? ["Identifier not verified by this match — check it before copying."] : []),
+      ...(difference.notOffered ? [`Not offered: ${difference.notOffered}.`] : [])
+    ]
   };
 }
 

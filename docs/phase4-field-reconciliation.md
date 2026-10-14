@@ -111,9 +111,15 @@ written.
 | Class | Rule | Default in preview | Why |
 |---|---|---|---|
 | `IDENTICAL` | every non-empty copy normalizes to the same value, and the target has it | not offered | nothing to do |
-| `MISSING` | target empty; every source that has a value agrees | **ticked** — copy that value | the §38 "safe recommendation" |
+| `MISSING` | target empty; every source that has a value agrees | **ticked** — copy that value (except DOI/ISBN/ISSN: unticked, see below) | the §38 "safe recommendation" |
 | `DIFFERENT` | target has a value; the sources agree with each other but not with the target | unticked; one alternative offered | the §38 "much less safe" case: one copy says 3, the others say 4 |
 | `CONFLICTING` | the sources disagree with each other (≥2 different values) | unticked; user picks one, or none | there is no single alternative to recommend |
+
+**Identifiers are never pre-selected** (decided 2026-10-14, after the slice 2 live report
+showed many `DOI (missing)` rows). A missing DOI/ISBN/ISSN can only arise when the match did
+not rest on that identifier (Tier 0 link or Tier 2 bibliographic), so the source value is
+unverified; a wrong one copied into My Library misleads every later match (§46). Shown as
+`MISSING` with a note, unticked.
 
 `MISSING` and `CONFLICTING` are never collapsed (§38, CLAUDE.md). The spec lists all four
 labels without defining `DIFFERENT` against `CONFLICTING`. The definitions above are a
@@ -267,7 +273,7 @@ hidden.
    after a session (live-checked in the DB, as in Phase 3).
 3. **Only strong, direct pairs supply values** (§5). Tier 3 / REVIEW / transitive → not in
    the plan.
-4. **Only `MISSING` is pre-ticked.** `DIFFERENT` / `CONFLICTING` require a user click per
+4. **Only `MISSING` is pre-ticked, and never an identifier (DOI/ISBN/ISSN).** `DIFFERENT` / `CONFLICTING` require a user click per
    field; there is no "accept all differences" button.
 5. **Compare-and-swap inside the transaction** (§6); a stale item is skipped whole and listed
    with `[ Recompare ]`.

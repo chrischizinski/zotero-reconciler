@@ -44,6 +44,16 @@ describe("Reconcile preview — only MISSING is pre-selected (invariant 4)", () 
     expect(byField.title).toMatchObject({ class: "IDENTICAL", offerable: false });
   });
 
+  it("a MISSING DOI/ISBN/ISSN is offered but never pre-selected: the match did not verify it (§46 wrong DOI)", () => {
+    const identifiers = compareRecords(record(MY, { DOI: "", ISBN: "", ISSN: "", issue: "" }), [record(TEXTBOOK, { DOI: "10.1002/jwmg.99999", ISBN: "9780306406157", ISSN: "0022-541X", issue: "4" })]);
+    const rows = Object.fromEntries(reconcilePreviewModel(TARGET.title, identifiers, sources).rows.map((row) => [row.field, row]));
+    for (const field of ["DOI", "ISBN", "ISSN"]) {
+      expect(rows[field]).toMatchObject({ class: "MISSING", offerable: true, defaultChoice: -1 });
+      expect(rows[field]?.notes).toContain("Identifier not verified by this match — check it before copying.");
+    }
+    expect(rows.issue?.defaultChoice).toBe(0);
+  });
+
   it("Cancel → no plan, nothing to write", () => {
     expect(applyReconcilePreview(TARGET, differences, sources, { confirmed: false, choices: { issue: 0 } }, NOW)).toBeUndefined();
   });
