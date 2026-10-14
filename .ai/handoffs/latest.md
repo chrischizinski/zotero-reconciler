@@ -346,3 +346,23 @@ Still open from the review (not changed):
   `undo-action-edit-metadata` + plugin session undo (CAS in reverse), log entry
   `update_metadata`, 3 slices behind pref `enableReconcile`.
 - Decisions A–G in §12 await the user. No code until answered.
+
+## 2026-10-14 Phase 4 slice 1 built (ead5102, not pushed, NOT live-tested)
+
+- Compare Copies and Update My Library… (item menu, My Library item only) → Find Copies →
+  EXACT/HIGH direct pairs only → `readFieldRecord` (adapter) → `compareRecords`
+  (src/comparison/differenceEngine.ts) → `reconcilePreview.xhtml` → `executeReconcilePlan`
+  → `WriteAPI.updateFields` (in-transaction CAS on target fields AND source values; allowlist
+  in adapter; `undo-action-edit-metadata`) → `update_metadata` log entry.
+- Tools → Undo Last Metadata Update… = reverse CAS from the log; `revert_metadata` entry.
+- Pref `extensions.zotero-library-reconciler.enableReconcile` = true in dev prefs.js. Log
+  line confirms both phases enabled.
+- 168 tests. Live test blocked: screen locked/asleep, dev Zotero had no window.
+- Live test plan (dev profile, auto-sync OFF): My Library item 2ZTHYBBJ "Human–wildlife
+  coexistence in a changing world" (2020); group hdfw-book copy KRPTRALU has volume 34,
+  issue 4, pages 786-794 that My Library lacks → expect 3 MISSING rows pre-selected.
+  1. Right-click → Compare Copies… → preview → Update 3 Fields → result window.
+  2. DB: fields on 2ZTHYBBJ set; KRPTRALU version/clientDateModified unchanged; log entry.
+  3. Edit → Undo → fields cleared. Then Tools → Undo Last Metadata Update → expect
+     "Nothing was restored" (already reverted).
+  4. Redo update; edit issue by hand between preview and confirm → expect target-changed.
