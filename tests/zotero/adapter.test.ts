@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isCandidatePair } from "../../src/matching/blocking.js";
 import { normalizeItem } from "../../src/matching/normalize.js";
-import { auditLibraries, findCopies, toScannedItem, type ZoteroItem } from "../../src/zotero/adapter.js";
-import { renderResult } from "../../src/zotero/findCopiesCommand.js";
+import { auditLibraries, findCopies, toScannedItem, type ZoteroFieldReadAPI, type ZoteroItem } from "../../src/zotero/adapter.js";
+import { copyDifferences, renderResult } from "../../src/zotero/findCopiesCommand.js";
 
 /** Fake `Zotero.URI`: Zotero's item URIs are `http://zotero.org/{users/<id>|groups/<id>}/items/<key>`. */
 const uri = {
@@ -91,15 +91,31 @@ describe("Zotero read adapter", () => {
     expect(renderResult(result)).toContain("doi identical");
   });
 
-  it("renders actual differing values for a confirmed copy", async () => {
-    const source = zoteroItem({ fields: { title: "Waterfowl harvest", DOI: "10.1/example" } });
-    const copy = zoteroItem({ libraryID: 2, fields: { title: "Waterfowl harvest", DOI: "10.1/example" }, getCreators: () => [{ lastName: "Jones", firstName: "Alex" }] });
-    const result = await findCopies({
+  it("Find Copies' Differences line uses the Difference Engine: missing and differing values shown, format-only and identical hidden", async () => {
+    const values: Record<string, Record<string, string>> = {
+      "1:AAAA1111": { title: "Waterfowl harvest", DOI: "10.1/example", issue: "", pages: "1-9", volume: "8", abstractNote: "x".repeat(200) },
+      "2:BBBB2222": { title: "Waterfowl harvest", DOI: "10.1/example", issue: "4", pages: "1–9", volume: "9", abstractNote: "" }
+    };
+    const fieldItem = (libraryID: number, key: string) => zoteroItem({ libraryID, key, fields: values[`${libraryID}:${key}`]! });
+    const source = fieldItem(1, "AAAA1111");
+    const copy = fieldItem(2, "BBBB2222");
+    const ids: Record<string, number> = { title: 1, DOI: 2, issue: 3, pages: 4, volume: 5, abstractNote: 6 };
+    const api = {
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user" }, { libraryID: 2, name: "Waterfowl Group", libraryType: "group" }] },
-      Items: { getAll: async (libraryID) => libraryID === 2 ? [copy] : [source], loadDataTypes: async () => undefined },
-      URI: uri
-    }, source);
-    expect(renderResult(result)).toContain("Differences: creators (Smith, Jane → Jones, Alex)");
+      Items: {
+        getAll: async (libraryID: number) => libraryID === 2 ? [copy] : [source],
+        loadDataTypes: async () => undefined,
+        getByLibraryAndKey: (libraryID: number, key: string) => ({ ...fieldItem(libraryID, key), itemTypeID: 4, getCreatorsJSON: () => [{ creatorType: "author", lastName: "Smith", firstName: "Jane" }] })
+      },
+      URI: uri,
+      ItemFields: { getID: (field: string) => ids[field] ?? false, getName: () => false as const, isValidForType: () => true, getFieldIDFromTypeAndBase: () => false as const },
+      CreatorTypes: { getTypesForItemType: () => [{ id: 1, name: "author" }] }
+    };
+    const result = await findCopies(api, source);
+    const text = renderResult(result, await copyDifferences(api as unknown as ZoteroFieldReadAPI, result));
+    expect(text).toContain(`Differences: abstractNote (${"x".repeat(79)}… → —); volume (8 → 9); issue (— → 4)`);
+    expect(text).not.toContain("pages");
+    expect(text).not.toContain("title (");
   });
 
   it("never scans feed libraries: RSS items are not bibliographic records (§6)", async () => {

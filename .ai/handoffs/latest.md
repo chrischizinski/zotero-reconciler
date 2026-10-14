@@ -431,6 +431,17 @@ Still open from the review (not changed):
 - NOT live-tested: Cancel (125 items finished in < 1 s) and the 250 soft cap (125 < 250).
   Both covered by unit tests; same window code verified live in Phase 3 (2026-09-18).
 - Report label: a missing identifier now reads "DOI (missing — identifier, check by hand)".
-- Still open: retire fieldComparator / audit.discrepancies; orphaned async restoreIndex
+- Still open: orphaned async restoreIndex
   after double startup; Phase 3 decisions (stale sameAs links, 4 data errors);
   disableIn/defaultIn → enabledTreeIDs.
+
+## 2026-10-14 cleanup — one definition of "difference" everywhere
+
+- Find Copies' "Differences:" line now comes from the Difference Engine (`copyDifferences`
+  in findCopiesCommand.ts: reads field records for the selected item and each confirmed
+  copy, `compareRecords`, drops IDENTICAL incl. format-only). Values truncated to 80 chars.
+  Behaviour change: a field empty on one side now shows (`issue (— → 4)`); the old line
+  skipped it.
+- Removed `src/comparison/fieldComparator.ts` (+ its 1 test) and the unused
+  `audit.discrepancies` / `WorkDiscrepancy`. design.md §45 layout still names
+  fieldComparator.ts; the module is `differenceEngine.ts` (spec not edited).

@@ -3,6 +3,12 @@ import { FindCopiesCommand } from "../../src/zotero/findCopiesCommand.js";
 import type { ZoteroItem } from "../../src/zotero/adapter.js";
 import { IndexStore, type SnapshotFileSystem } from "../../src/zotero/indexStore.js";
 
+/** Find Copies also reads field records for its "Differences:" line; these tests do not exercise it. */
+const FIELD_STUBS = {
+  ItemFields: { getID: () => false as const, getName: () => false as const, isValidForType: () => false, getFieldIDFromTypeAndBase: () => false as const },
+  CreatorTypes: { getTypesForItemType: () => [] }
+};
+
 function selectedItem(): ZoteroItem {
   return {
     libraryID: 1,
@@ -60,7 +66,8 @@ describe("Find Copies command", () => {
       getMainWindow: () => ({ document: harness.document } as unknown as Window),
       Libraries: { getAll: () => [] },
       URI: { getURIItemLibraryKey: () => false as const },
-      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined, getByLibraryAndKey: () => false as const },
+      ...FIELD_STUBS
     });
 
     command.register();
@@ -84,7 +91,8 @@ describe("Find Copies command", () => {
       getMainWindow: () => ({ document: first.document } as unknown as Window),
       Libraries: { getAll: () => [] },
       URI: { getURIItemLibraryKey: () => false as const },
-      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined, getByLibraryAndKey: () => false as const },
+      ...FIELD_STUBS
     });
     const firstWindow = { document: first.document } as unknown as Window;
     const secondWindow = { document: second.document } as unknown as Window;
@@ -114,7 +122,8 @@ describe("Find Copies command", () => {
       } as unknown as Window),
       Libraries: { getAll: () => [] },
       URI: { getURIItemLibraryKey: () => false as const },
-      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined, getByLibraryAndKey: () => false as const },
+      ...FIELD_STUBS
     });
 
     await command.run();
@@ -142,7 +151,8 @@ describe("Find Copies command", () => {
       getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
       URI: { getURIItemLibraryKey: () => false as const },
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 3 }], userLibraryID: 1 },
-      Items: { getAll: async (libraryID: number) => libraryID === 1 ? [mine] : [copy], loadDataTypes: async () => undefined }
+      Items: { getAll: async (libraryID: number) => libraryID === 1 ? [mine] : [copy], loadDataTypes: async () => undefined, getByLibraryAndKey: () => false as const },
+      ...FIELD_STUBS
     };
 
     const first = new FindCopiesCommand(zotero, { store, now: () => new Date("2026-09-17T12:00:00Z") });
@@ -177,7 +187,8 @@ describe("Find Copies command", () => {
       getMainWindow: () => ({ document: menuHarness().document, openDialog: (_u: string, _n: string, _f: string, args: { text: string }) => dialogs.push(args.text) } as unknown as Window),
       URI: { getURIItemLibraryKey: () => false as const },
       Libraries: { getAll: () => [{ libraryID: 1, name: "My Library", libraryType: "user", libraryVersion: 10 }, { libraryID: 2, name: "Group", libraryType: "group", libraryVersion: 4 }], userLibraryID: 1 },
-      Items: { getAll: async () => [], loadDataTypes: async () => undefined }
+      Items: { getAll: async () => [], loadDataTypes: async () => undefined, getByLibraryAndKey: () => false as const },
+      ...FIELD_STUBS
     };
     const options = { store, now: () => new Date("2026-09-17T12:00:00Z"), confirmRescan: (message: string) => { prompts.push(message); return answer; } };
 

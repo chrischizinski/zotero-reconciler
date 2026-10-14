@@ -1,6 +1,8 @@
-import { auditLibraries, currentLibraryVersions, findCopies, type FindCopiesResult, type ZoteroItem, type ZoteroReadAPI } from "./adapter.js";
+import { auditLibraries, currentLibraryVersions, findCopies, readFieldRecord, type FindCopiesResult, type ZoteroFieldReadAPI, type ZoteroItem, type ZoteroReadAPI } from "./adapter.js";
 import type { CrossLibraryAudit } from "../audit/crossLibraryAudit.js";
-import { compareBibliographicFields } from "../comparison/fieldComparator.js";
+import { refKey } from "../audit/metadataDifferences.js";
+import { compareRecords, type FieldDifference } from "../comparison/differenceEngine.js";
+import { display } from "../write/reconcilePlan.js";
 import { createSnapshot, staleLibraries, WorkLookup, type IndexSnapshot } from "../works/indexSnapshot.js";
 import type { IndexStore } from "./indexStore.js";
 
@@ -18,6 +20,9 @@ interface ChromeWindow extends Window {
 }
 
 interface ZoteroUI extends ZoteroReadAPI {
+  Items: ZoteroReadAPI["Items"] & ZoteroFieldReadAPI["Items"];
+  ItemFields: ZoteroFieldReadAPI["ItemFields"];
+  CreatorTypes: ZoteroFieldReadAPI["CreatorTypes"];
   debug(message: string): void;
   getActiveZoteroPane(): ZoteroPane;
   getMainWindow(): Window;
@@ -140,7 +145,7 @@ export class FindCopiesCommand {
 
     try {
       const result = await findCopies(this.zotero, selected[0]);
-      this.show(renderResult(result), "Find Copies");
+      this.show(renderResult(result, await copyDifferences(this.zotero, result)), "Find Copies");
     }
     catch (error) {
       this.zotero.debug(`[Zotero Library Reconciler] Find Copies failed: ${String(error)}`);
@@ -194,15 +199,45 @@ function renderLinkedOracle(audit: CrossLibraryAudit): string {
   return `${head}\nFirst ${rows.length}:\n${rows.join("\n")}`;
 }
 
-export function renderResult(result: FindCopiesResult): string {
+/**
+ * Field differences between the selected item and each confirmed copy, by the same Difference
+ * Engine Compare Copies uses (one definition of "difference", Rule 7). Identical and
+ * format-only fields are left out. Keyed by the copy's `refKey`.
+ */
+export async function copyDifferences(api: ZoteroFieldReadAPI, result: FindCopiesResult): Promise<Map<string, FieldDifference[]>> {
+  const differences = new Map<string, FieldDifference[]>();
+  const source = await readFieldRecord(api, result.source.ref);
+  if (!source) return differences;
+  for (const { item, result: match } of result.copies) {
+    if (match.verdict !== "match") continue;
+    const copy = await readFieldRecord(api, item.ref);
+    if (copy) differences.set(refKey(item.ref), compareRecords(source, [copy]).filter((difference) => difference.class !== "IDENTICAL"));
+  }
+  return differences;
+}
+
+const MAX_SHOWN = 80;
+
+function shown(value: FieldDifference["targetValue"]): string {
+  const text = display(value);
+  if (!text) return "—";
+  return text.length > MAX_SHOWN ? `${text.slice(0, MAX_SHOWN - 1)}…` : text;
+}
+
+function describeDifference(difference: FieldDifference): string {
+  const other = difference.alternatives[0]?.value ?? "";
+  return `${difference.field} (${shown(difference.targetValue)} → ${shown(other)})`;
+}
+
+export function renderResult(result: FindCopiesResult, differences: ReadonlyMap<string, readonly FieldDifference[]> = new Map()): string {
   const heading = `Find Copies: ${result.source.fields.title || "Untitled"}`;
   const summary = `Compared ${result.scannedItems} plausible candidates in ${result.scannedLibraries} other libraries.`;
   if (result.copies.length === 0) return `${heading}\n\n${summary}\n\nNo copies or review candidates found.`;
 
   const rows = result.copies.map(({ item, result: match }) => {
     const evidence = match.evidence.map(({ detail }) => detail).join(" ");
-    const differences = match.verdict === "match" ? compareBibliographicFields(result.source, item) : [];
-    const differenceText = differences.length === 0 ? "" : `\n  Differences: ${differences.map(({ field, left, right }) => `${field} (${left} → ${right})`).join("; ")}`;
+    const found = match.verdict === "match" ? differences.get(refKey(item.ref)) ?? [] : [];
+    const differenceText = found.length === 0 ? "" : `\n  Differences: ${found.map(describeDifference).join("; ")}`;
     return `• ${item.ref.libraryName} — ${match.verdict.toUpperCase()}\n  ${item.fields.title || "Untitled"}\n  ${evidence}${differenceText}`;
   });
   return `${heading}\n\n${summary}\n\n${rows.join("\n\n")}`;
