@@ -321,3 +321,19 @@ Still open from the review (not changed):
   only writeAdapter.ts mutates). Open small items: `runtime.startup()` re-entry guard;
   Tools-menu placement for import/undo; deprecated `disableIn`/`defaultIn` column props →
   `enabledTreeIDs`.
+
+## 2026-10-14 small items: startup re-entry guard + Tools-menu placement
+
+- Zotero auto-updated to 10.0.6 → plugin appDisabled again; fixed by deleting dev
+  `addonStartup.json.lz4`. Production Zotero was running alongside — quit dev by PID only.
+- `bootstrap.js`: second `startup` without `shutdown` now shuts the first instance down and
+  deletes the global. Live: ADDON_ENABLE start → "startup called again; restarting" →
+  Stopped → Started.
+- `importCommand.ts`: Add Missing / Undo Import moved to Tools menu (`menu_ToolsPopup`,
+  confirmed in Zotero 10 `zoteroPane.xhtml`) with a separator. Live: Tools menu lists both.
+  New test pins Tools-only placement (mutation-checked). 115 tests.
+- Known, deferred: first instance's async `restoreIndex()` outlives its shutdown (log shows
+  "Restored index" twice). Read-only; only visible effect would be a duplicate "Rescan Now?"
+  prompt when a library changed since the scan. Fix = shutdown flag/abort in FindCopiesCommand.
+- Next: Phase 4 design session. Still open: stale sameAs links (user decision), 4 data errors,
+  `disableIn`/`defaultIn` → `enabledTreeIDs`.

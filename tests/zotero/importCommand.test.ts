@@ -75,6 +75,50 @@ function harness(options: { preview?: (model: PreviewModel) => PreviewResult; co
   return { command, events, shown, previews, files, logText: () => files.get("/data/zotero-library-reconciler/transactions.jsonl") ?? "" };
 }
 
+describe("Import menu placement — library-level commands belong in Tools, not the item menu", () => {
+  /** Two popups, each recording what was appended; elements remove themselves from their popup. */
+  function menuWindow() {
+    const popups = { menu_ToolsPopup: [] as { id: string }[], "zotero-itemmenu": [] as { id: string }[] };
+    const byId = (id: string) => [...popups.menu_ToolsPopup, ...popups["zotero-itemmenu"]].find((element) => element.id === id);
+    const document = {
+      getElementById: (id: string) => {
+        if (id in popups) {
+          const children = popups[id as keyof typeof popups];
+          return { appendChild: (child: { id: string; popup?: typeof children }) => { child.popup = children; children.push(child); return child; } };
+        }
+        return byId(id) ?? null;
+      },
+      createXULElement: () => {
+        const element = {
+          id: "", popup: undefined as { id: string }[] | undefined,
+          setAttribute: () => undefined, addEventListener: () => undefined,
+          remove: () => { element.popup?.splice(element.popup.indexOf(element), 1); }
+        };
+        return element;
+      }
+    };
+    return { window: { document } as unknown as Window, popups };
+  }
+
+  it("adds a separator plus both entries to the Tools menu once, nothing to the item menu, and removes all three on shutdown", () => {
+    const { command } = harness();
+    const { window, popups } = menuWindow();
+
+    command.register(window);
+    command.register(window);
+    expect(popups.menu_ToolsPopup.map((element) => element.id)).toEqual([
+      "zotero-library-reconciler-import-separator",
+      "zotero-library-reconciler-import",
+      "zotero-library-reconciler-undo-import"
+    ]);
+    // Import acts on whole libraries, not the selection; an item-menu entry would imply otherwise.
+    expect(popups["zotero-itemmenu"]).toHaveLength(0);
+
+    command.unregister(window);
+    expect(popups.menu_ToolsPopup).toHaveLength(0);
+  });
+});
+
 describe("Add Missing Items command — the only path to the write engine (§25 in order)", () => {
   it("previews every group-only work and, on Cancel, performs no write and writes no log", async () => {
     const { command, events, previews } = harness();

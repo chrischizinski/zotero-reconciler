@@ -83,10 +83,15 @@ export class ImportCommand {
     this.openProgress = options.openProgress ?? ((total) => this.openProgressWindow(total));
   }
 
+  /** Library-level commands, so they live in the Tools menu rather than the item context menu. */
   register(window: Window = this.zotero.getMainWindow()): void {
     const document = window.document as XULDocument;
-    const menu = document.getElementById("zotero-itemmenu");
+    const menu = document.getElementById("menu_ToolsPopup");
     if (!menu || document.getElementById(IMPORT_MENU_ID)) return;
+
+    const separator = document.createXULElement("menuseparator");
+    separator.id = `${IMPORT_MENU_ID}-separator`;
+    menu.appendChild(separator);
 
     const importItem = document.createXULElement("menuitem");
     importItem.id = IMPORT_MENU_ID;
@@ -100,7 +105,7 @@ export class ImportCommand {
     undoItem.addEventListener("command", () => void this.undoLast());
     menu.appendChild(undoItem);
 
-    this.menuItems.set(window, [importItem, undoItem]);
+    this.menuItems.set(window, [separator, importItem, undoItem]);
   }
 
   unregister(window?: Window): void {

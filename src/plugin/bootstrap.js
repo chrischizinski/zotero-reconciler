@@ -5,6 +5,13 @@ function install(data, reason) {}
 
 async function startup({ id, version, rootURI, resourceURI }, reason) {
   await Zotero.initializationPromise;
+  // Zotero can call startup twice without a shutdown in between (ADDON_ENABLE then
+  // APP_STARTUP after a re-enable). The runtime bundle is an IIFE, so a second load would
+  // orphan the first instance's registrations; tear it down first.
+  if (globalThis.ZoteroLibraryReconciler) {
+    Zotero.debug("[Zotero Library Reconciler] startup called again; restarting.");
+    shutdown({ id, version, rootURI, resourceURI }, reason);
+  }
   const baseURI = rootURI || resourceURI.spec;
 
   // Zotero 7+ ignores chrome.manifest for bootstrapped plugins; chrome:// URLs must be
@@ -31,6 +38,7 @@ function onMainWindowUnload({ window }) {
 
 function shutdown(data, reason) {
   globalThis.ZoteroLibraryReconciler?.shutdown();
+  delete globalThis.ZoteroLibraryReconciler;
   if (chromeHandle) {
     chromeHandle.destruct();
     chromeHandle = null;
