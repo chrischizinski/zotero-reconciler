@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<!--
+  Phase 4 slice 2 report (read-only). Non-modal. Receives { model, actions } via
+  window.arguments[0]: `model` is a DifferencesWindowModel; `actions.select(key)` selects the
+  My Library item in Zotero; `actions.compare(key)` (present only when Phase 4 is enabled)
+  opens Compare Copies, whose own preview is the only place a write can be confirmed.
+-->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Metadata Differences in My Library"
+        width="900" height="640"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <html:style><![CDATA[
+    #rows { flex: 1 1 0; min-height: 0; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
+    .row { display: flex; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--fill-quinary, #e5e5e5); align-items: flex-start; }
+    .text { flex: 1; min-width: 0; }
+    .title { font-weight: 600; overflow-wrap: anywhere; }
+    .counts { font-size: 0.92em; }
+    .counts.fillable { color: light-dark(#1a6b2a, #8fd19e); }
+    .detail { color: light-dark(#555, #b0b0b0); font-size: 0.92em; overflow-wrap: anywhere; }
+    .status { color: light-dark(#8a4b00, #f2b866); font-size: 0.92em; }
+    .buttons { display: flex; gap: 4px; flex-shrink: 0; }
+    #summary { white-space: pre-wrap; }
+  ]]></html:style>
+  <script><![CDATA[
+    const HTML_NS = "http://www.w3.org/1999/xhtml";
+    let args;
+
+    function init() {
+      args = window.arguments && window.arguments[0];
+      if (!args || !args.model) { window.close(); return; }
+      document.getElementById("summary").textContent = args.model.summary;
+      render();
+    }
+
+    function el(tag, className, text) {
+      const node = document.createElementNS(HTML_NS, tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function render() {
+      const onlyFillable = document.getElementById("only-fillable").checked;
+      const container = document.getElementById("rows");
+      container.textContent = "";
+      const rows = args.model.rows.filter((row) => !onlyFillable || row.fillable > 0);
+      if (rows.length === 0) container.appendChild(el("div", "detail", "Nothing to show."));
+      for (const row of rows) container.appendChild(renderRow(row));
+    }
+
+    function renderRow(row) {
+      const div = el("div", "row");
+      const text = el("div", "text");
+      text.appendChild(el("div", "title", row.title));
+      text.appendChild(el("div", row.fillable > 0 ? "counts fillable" : "counts", row.counts));
+      text.appendChild(el("div", "detail", row.detail));
+      const status = el("div", "status");
+      text.appendChild(status);
+      div.appendChild(text);
+      const buttons = el("div", "buttons");
+      const show = el("button", undefined, "Show");
+      show.addEventListener("click", () => args.actions.select(row.itemKey));
+      buttons.appendChild(show);
+      if (args.actions.compare) {
+        const compare = el("button", undefined, "Compare Copies…");
+        compare.addEventListener("click", async () => {
+          compare.disabled = true;
+          try {
+            status.textContent = await args.actions.compare(row.itemKey);
+          } catch (error) {
+            status.textContent = String(error);
+          } finally {
+            compare.disabled = false;
+          }
+        });
+        buttons.appendChild(compare);
+      }
+      div.appendChild(buttons);
+      return div;
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 12px; gap: 8px; min-height: 0;">
+    <html:div id="summary"/>
+    <checkbox id="only-fillable" label="Only items with fields My Library lacks" oncommand="render()"/>
+    <html:div id="rows" flex="1"/>
+    <hbox pack="end">
+      <button label="Close" oncommand="window.close()"/>
+    </hbox>
+  </vbox>
+</window>

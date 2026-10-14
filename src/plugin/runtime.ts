@@ -2,6 +2,7 @@ import { CoverageColumn, type ItemTreeManagerAPI } from "../zotero/coverageColum
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
 import { ImportCommand } from "../zotero/importCommand.js";
 import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
+import { MetadataDifferencesCommand } from "../zotero/metadataDifferencesCommand.js";
 import { ReconcileCommand } from "../zotero/reconcileCommand.js";
 import { TransactionStore, type LogFileSystem } from "../zotero/transactionStore.js";
 import { zoteroWriteAPI, type ZoteroWriteAPI } from "../zotero/writeAdapter.js";
@@ -29,6 +30,7 @@ declare const PathUtils: { join(...parts: string[]): string };
 let findCopiesCommand: FindCopiesCommand | undefined;
 let importCommand: ImportCommand | undefined;
 let reconcileCommand: ReconcileCommand | undefined;
+let differencesCommand: MetadataDifferencesCommand | undefined;
 let coverageColumn: CoverageColumn | undefined;
 
 /**
@@ -100,10 +102,20 @@ runtimeGlobal.ZoteroLibraryReconciler = {
         confirm: (message) => confirmDialog(message, "Undo Last Metadata Update", "Restore"),
       });
     }
+    // Read-only, so not gated; its Compare button exists only when the write path does.
+    const reconcile = reconcileCommand;
+    differencesCommand = new MetadataDifferencesCommand(Zotero as ConstructorParameters<typeof MetadataDifferencesCommand>[0], reconcile ? {
+      compare: async (item) => {
+        const outcome = await reconcile.runFor(item);
+        if (!outcome) return "Not updated.";
+        return outcome.status === "written" ? `Updated ${outcome.plan.edits.length} field${outcome.plan.edits.length === 1 ? "" : "s"}. Rerun the report to refresh counts.` : `Not updated (${outcome.status}).`;
+      }
+    } : {});
     for (const window of Zotero.getMainWindows()) {
       command.register(window);
       importCommand?.register(window);
       reconcileCommand?.register(window);
+      differencesCommand.register(window);
     }
     coverageColumn.register();
     void command.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
@@ -117,6 +129,8 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     importCommand = undefined;
     reconcileCommand?.unregister();
     reconcileCommand = undefined;
+    differencesCommand?.unregister();
+    differencesCommand = undefined;
     findCopiesCommand?.unregister();
     findCopiesCommand = undefined;
     log("Stopped.");
@@ -125,10 +139,12 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     findCopiesCommand?.register(window);
     importCommand?.register(window);
     reconcileCommand?.register(window);
+    differencesCommand?.register(window);
   },
   onMainWindowUnload(window: Window): void {
     findCopiesCommand?.unregister(window);
     importCommand?.unregister(window);
     reconcileCommand?.unregister(window);
+    differencesCommand?.unregister(window);
   },
 };

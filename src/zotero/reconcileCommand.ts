@@ -107,7 +107,13 @@ export class ReconcileCommand {
       this.show("Select one bibliographic item in My Library, then choose Compare Copies and Update My Library.", TITLE);
       return undefined;
     }
-    const item = selected[0];
+    return this.runFor(selected[0]);
+  }
+
+  /** The same sequence for a given item; the Metadata Differences window calls this per row. */
+  async runFor(item: ZoteroItem): Promise<ReconcileOutcome | undefined> {
+    if (this.busy) { this.show("A metadata update is already running.", TITLE); return undefined; }
+    const myLibraryID = this.writeAPI.userLibraryID();
     if (item.libraryID !== myLibraryID) {
       this.show("Only My Library items can be updated. Select the My Library copy of this work (the \"Also in\" column shows where copies are).", TITLE);
       return undefined;
