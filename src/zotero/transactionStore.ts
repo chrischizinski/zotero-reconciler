@@ -44,11 +44,11 @@ export class TransactionStore {
     return parseLog(await this.fs.readUTF8(this.path));
   }
 
-  /** Rewrites the import or metadata entries that an undo reversed; the only non-append write, on a small file, via a temp path. */
+  /** Rewrites the import, metadata or link entries that an undo reversed; the only non-append write, on a small file, via a temp path. */
   async markUndone(entryIDs: string | readonly string[], undoneAt: string): Promise<void> {
     const ids = new Set(typeof entryIDs === "string" ? [entryIDs] : entryIDs);
     const { entries } = await this.readAll();
-    const updated = entries.map((entry) => ((entry.action === "import" || entry.action === "update_metadata") && ids.has(entry.id) ? { ...entry, undoneAt } : entry));
+    const updated = entries.map((entry) => ((entry.action === "import" || entry.action === "update_metadata" || entry.action === "remove_link") && ids.has(entry.id) ? { ...entry, undoneAt } : entry));
     await this.fs.writeUTF8(this.path, serializeLog(updated), { mode: "overwrite", tmpPath: `${this.path}.tmp` });
   }
 }

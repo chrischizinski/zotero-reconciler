@@ -473,3 +473,19 @@ Still open from the review (not changed):
   #3 #8 DOIs, #9 #12 types, #13 year in hdfw-book, #6 both copies, #17 type + DOI).
   P3 = edition/version/proceedings pairs stay REVIEW (no change).
 - To do in dev Zotero: run Audit once so the saved index uses the new Tier 1 rule.
+
+## 2026-10-14 "Review Outdated Zotero Links…" built + live-verified (P1)
+
+- Tools menu (behind `enableLinkRepair`, set in dev prefs.js only): offers linked My Library ↔
+  group pairs the rules deny AND whose titles diverged, link stored on the My Library side;
+  nothing pre-ticked. Same-title denied pairs (data error) and group-side links are listed as
+  not offered. `src/write/linkRepair.ts`, `src/zotero/linkRepairCommand.ts`,
+  `src/plugin/linkPreview.xhtml`; `WriteAPI.removeLinkedRelations` / `restoreLinkedRelations`
+  (one transaction, CAS, only owl:sameAs, My Library only, skipDateModifiedUpdate like
+  Zotero's own link saves, undoAction). Log: `remove_link` per pair (exact URI) + `restore_link`.
+  Index refreshed after a change. 227 tests; 5 mutations caught.
+- LIVE: removed 5LDDIRUT→58WZEXQ3 and XDEAYCD5→239H4AT2; DB: exactly those 2 relations gone
+  (4582→4580), 5LDDIRUT's second link (6V898F5G) kept, groups unchanged, dateModified
+  unchanged. Undo Last Link Removal: both restored, links identical to snapshot, 4582.
+- Removals in dev do not reach production (dev never syncs). Using it on the real library needs
+  the plugin in the production profile — not approved.

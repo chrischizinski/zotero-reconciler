@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!--
+  "Review Outdated Zotero Links" preview (PREVIEW / CONFIRM, §25). Modal. Receives
+  { model, result } via window.arguments[0]: renders `model` (LinkPreviewModel) and writes the
+  user's answer into `result` (LinkPreviewResult) before closing. Nothing is pre-ticked; only
+  keys the model supplied can be ticked, and closing any other way leaves confirmed = false.
+-->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Review Outdated Zotero Links"
+        width="860" height="640"
+        onload="init()">
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <html:link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css"/>
+  </linkset>
+  <html:style><![CDATA[
+    #rows { flex: 1 1 0; min-height: 0; overflow-y: auto; border: 1px solid var(--fill-quinary, #ccc); padding: 4px; background: var(--material-background, white); }
+    .row { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--fill-quinary, #e5e5e5); align-items: flex-start; }
+    .row input { margin-top: 3px; }
+    .title { font-weight: 600; overflow-wrap: anywhere; }
+    .detail { color: light-dark(#555, #b0b0b0); font-size: 0.92em; overflow-wrap: anywhere; margin-bottom: 3px; }
+    .evidence { color: light-dark(#8a4b00, #f2b866); font-size: 0.92em; overflow-wrap: anywhere; }
+    .not-offered { color: light-dark(#555, #b0b0b0); font-size: 0.92em; overflow-wrap: anywhere; }
+    #summary { white-space: pre-wrap; }
+  ]]></html:style>
+  <script><![CDATA[
+    const HTML_NS = "http://www.w3.org/1999/xhtml";
+    let args;
+
+    function init() {
+      args = window.arguments && window.arguments[0];
+      if (!args || !args.model) { window.close(); return; }
+      document.getElementById("summary").textContent = args.model.summary;
+      const container = document.getElementById("rows");
+      for (const row of args.model.rows) container.appendChild(renderRow(row));
+      for (const text of args.model.notOffered) container.appendChild(line("not-offered", text));
+      updateCount();
+    }
+
+    function renderRow(row) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = "row";
+      const box = document.createElementNS(HTML_NS, "input");
+      box.type = "checkbox";
+      box.dataset.key = row.key;
+      box.checked = false;
+      box.addEventListener("change", updateCount);
+      div.appendChild(box);
+      const text = document.createElementNS(HTML_NS, "div");
+      text.style.flex = "1";
+      text.appendChild(line("title", row.mine));
+      text.appendChild(line("detail", row.mineDetail));
+      text.appendChild(line("title", row.theirs));
+      text.appendChild(line("detail", row.theirsDetail));
+      for (const evidence of row.evidence) text.appendChild(line("evidence", evidence));
+      div.appendChild(text);
+      return div;
+    }
+
+    function line(className, content) {
+      const div = document.createElementNS(HTML_NS, "div");
+      div.className = className;
+      div.textContent = content;
+      return div;
+    }
+
+    function boxes() {
+      return Array.from(document.querySelectorAll("#rows input[type=checkbox]"));
+    }
+
+    function updateCount() {
+      const ticked = boxes().filter((box) => box.checked).length;
+      const button = document.getElementById("remove");
+      button.label = ticked === 0 ? "Remove Links" : `Remove ${ticked} Link${ticked === 1 ? "" : "s"}`;
+      button.disabled = ticked === 0;
+    }
+
+    function confirmRemove() {
+      args.result.checkedKeys = boxes().filter((box) => box.checked).map((box) => box.dataset.key);
+      args.result.confirmed = true;
+      window.close();
+    }
+  ]]></script>
+  <vbox flex="1" style="padding: 12px; gap: 8px; min-height: 0;">
+    <html:div id="summary"/>
+    <html:div id="rows" flex="1"/>
+    <hbox align="center" style="gap: 12px;">
+      <spacer flex="1"/>
+      <button label="Cancel" oncommand="window.close()" default="true"/>
+      <button id="remove" label="Remove Links" oncommand="confirmRemove()"/>
+    </hbox>
+  </vbox>
+</window>

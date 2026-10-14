@@ -1,5 +1,5 @@
 import { RECONCILABLE_FIELDS, type FieldValue, type RecordCreator } from "../comparison/differenceEngine.js";
-import type { CopyOptions, FieldCheck, FieldUpdate, FieldWrite, SourceItemState, UpdateResult, WritableLibrary, WriteAPI, WriteItemRef } from "../write/writeApi.js";
+import type { CopyOptions, FieldCheck, FieldUpdate, FieldWrite, LinkRemovalResult, LinkRestoreStatus, SourceItemState, UpdateResult, WritableLibrary, WriteAPI, WriteItemRef } from "../write/writeApi.js";
 
 /**
  * THE ONLY FILE THAT MODIFIES ZOTERO DATA (Phase 3 invariant 1).
@@ -7,8 +7,9 @@ import type { CopyOptions, FieldCheck, FieldUpdate, FieldWrite, SourceItemState,
  * Every mutation the plugin can perform is a method of `WriteAPI`, implemented here against
  * Zotero 10 objects, and nowhere else. `adapter.ts` stays read-only. Grep this file to audit
  * what the plugin can change: create a copy (with Zotero's own linked-item relation), create
- * an import collection, move items to the trash, and (Phase 4) compare-and-swap an allowlist
- * of bibliographic fields on My Library items (one item, or a chunk in one transaction).
+ * an import collection, move items to the trash, (Phase 4) compare-and-swap an allowlist
+ * of bibliographic fields on My Library items, and remove or restore one `owl:sameAs` link on a
+ * My Library item (one item, or a chunk in one transaction).
  * Nothing else edits an existing item.
  *
  * Verified against Zotero 10.0.2 source (omni.ja, 2026-09-17): `Item.clone`,
@@ -26,7 +27,7 @@ export interface ZoteroWritableItem {
   getLinkedItem(libraryID: number, bidirectional?: boolean): Promise<ZoteroWritableItem | false>;
   clone(libraryID: number, options?: { skipTags?: boolean }): ZoteroWritableItem;
   setCollections(collectionKeys: string[]): void;
-  save(options?: { skipSelect?: boolean; undoAction?: string; undoActionArgs?: Record<string, unknown> }): Promise<unknown>;
+  save(options?: { skipSelect?: boolean; skipDateModifiedUpdate?: boolean; undoAction?: string; undoActionArgs?: Record<string, unknown> }): Promise<unknown>;
   addLinkedItem(item: ZoteroWritableItem): Promise<boolean>;
   itemTypeID: number;
   getField(field: string): string;
@@ -34,6 +35,9 @@ export interface ZoteroWritableItem {
   getCreatorsJSON(): RecordCreator[];
   /** `strict`: throw on a creator type the item type lacks instead of silently using the primary type. */
   setCreators(creators: readonly RecordCreator[], options?: { strict?: boolean }): void;
+  getRelationsByPredicate(predicate: string): string[];
+  removeRelation(predicate: string, object: string): boolean;
+  addRelation(predicate: string, object: string): boolean;
 }
 
 export interface ZoteroCollectionObject {
@@ -61,6 +65,7 @@ export interface ZoteroWriteAPI {
   };
   Collection: new (params: { libraryID: number; name: string; parentKey?: string }) => ZoteroCollectionObject;
   DB: { executeTransaction<T>(fn: () => Promise<T>): Promise<T> };
+  URI: { getURIItemLibraryKey(itemURI: string): { libraryID: number; key: string } | false };
   ItemFields: {
     getID(field: string): number | false;
     getName(fieldID: number): string | false;
@@ -72,6 +77,8 @@ export interface ZoteroWriteAPI {
 /** Never written in any phase (design.md §12–§13), even if a caller asks. */
 const NEVER_WRITTEN = new Set(["citationKey", "extra", "itemType", "dateAdded", "dateModified", "accessDate"]);
 const RECONCILABLE: ReadonlySet<string> = new Set(RECONCILABLE_FIELDS);
+/** The only relation the plugin ever removes or restores. */
+const LINKED_ITEM_PREDICATE = "owl:sameAs";
 /** Zotero's own Fluent label ("Edit Metadata"), so ⌘Z shows the familiar entry. */
 const EDIT_UNDO_ACTION = "undo-action-edit-metadata";
 
@@ -145,7 +152,58 @@ export function zoteroWriteAPI(zotero: ZoteroWriteAPI): WriteAPI {
       return result!;
     },
 
-    updateFieldsBatch
+    updateFieldsBatch,
+
+    async removeLinkedRelations(removals): Promise<LinkRemovalResult[]> {
+      for (const removal of removals) {
+        if (removal.target.libraryID !== zotero.Libraries.userLibraryID) throw new Error("Links are removed from My Library items only.");
+      }
+      const targets = removals.map((removal) => item(removal.target));
+      for (const target of targets) await target?.loadAllData();
+      // Same pattern as updateFields: re-check and write in one transaction. Zotero stores a
+      // My Library ↔ group link on the My Library item (DataObject._addLinkedObject) and saves
+      // it with skipDateModifiedUpdate; we remove it the same way.
+      return zotero.DB.executeTransaction(async () => {
+        const found = removals.map((removal, index): LinkRemovalResult => {
+          const target = targets[index];
+          if (!target || target.deleted) return { status: "target-missing", detail: "The My Library item no longer exists or is in the trash." };
+          const uri = target.getRelationsByPredicate(LINKED_ITEM_PREDICATE).find((candidate) => {
+            const resolved = zotero.URI.getURIItemLibraryKey(candidate);
+            return resolved && resolved.libraryID === removal.linked.libraryID && resolved.key === removal.linked.itemKey;
+          });
+          return uri ? { status: "removed", uri } : { status: "link-missing", detail: "The My Library item no longer carries this link." };
+        });
+        const count = found.filter((result) => result.status === "removed").length;
+        for (const [index, result] of found.entries()) {
+          if (result.status !== "removed") continue;
+          targets[index]!.removeRelation(LINKED_ITEM_PREDICATE, result.uri);
+          await targets[index]!.save({ skipSelect: true, skipDateModifiedUpdate: true, undoAction: EDIT_UNDO_ACTION, undoActionArgs: { count } });
+        }
+        return found;
+      });
+    },
+
+    async restoreLinkedRelations(restores): Promise<LinkRestoreStatus[]> {
+      for (const restore of restores) {
+        if (restore.target.libraryID !== zotero.Libraries.userLibraryID) throw new Error("Links are restored on My Library items only.");
+      }
+      const targets = restores.map((restore) => item(restore.target));
+      for (const target of targets) await target?.loadAllData();
+      return zotero.DB.executeTransaction(async () => {
+        const statuses = restores.map((restore, index): LinkRestoreStatus => {
+          const target = targets[index];
+          if (!target || target.deleted) return "target-missing";
+          return target.getRelationsByPredicate(LINKED_ITEM_PREDICATE).includes(restore.uri) ? "already-present" : "restored";
+        });
+        const count = statuses.filter((status) => status === "restored").length;
+        for (const [index, status] of statuses.entries()) {
+          if (status !== "restored") continue;
+          targets[index]!.addRelation(LINKED_ITEM_PREDICATE, restores[index]!.uri);
+          await targets[index]!.save({ skipSelect: true, skipDateModifiedUpdate: true, undoAction: EDIT_UNDO_ACTION, undoActionArgs: { count } });
+        }
+        return statuses;
+      });
+    }
   };
 
   async function updateFieldsBatch(updates: readonly FieldUpdate[]): Promise<UpdateResult[]> {

@@ -8,9 +8,9 @@ const JOURNAL_ARTICLE = 4;
 const BOOK_SECTION = 5;
 
 /** A Zotero item with just enough behaviour: fields valid for its type, setField throws otherwise. */
-function fakeItem(libraryID: number, key: string, fields: Record<string, string>, creators: RecordCreator[] = [], itemTypeID = JOURNAL_ARTICLE) {
+function fakeItem(libraryID: number, key: string, fields: Record<string, string>, creators: RecordCreator[] = [], itemTypeID = JOURNAL_ARTICLE, relations: string[] = []) {
   const log: string[] = [];
-  const state = { fields: { ...fields }, creators: [...creators], deleted: false };
+  const state = { fields: { ...fields }, creators: [...creators], deleted: false, relations: [...relations] };
   const item = {
     id: libraryID * 100 + key.length, libraryID, key, version: 7, itemTypeID,
     get deleted() { return state.deleted; },
@@ -26,6 +26,9 @@ function fakeItem(libraryID: number, key: string, fields: Record<string, string>
     getCreatorsJSON: () => state.creators,
     setCreators: (next: readonly RecordCreator[], options?: { strict?: boolean }) => { log.push(`creators:strict=${options?.strict}`); state.creators = [...next]; },
     save: async (options?: unknown) => { log.push(`save:${JSON.stringify(options)}`); },
+    getRelationsByPredicate: (predicate: string) => (predicate === "owl:sameAs" ? [...state.relations] : []),
+    removeRelation: (predicate: string, object: string) => { log.push(`remove:${predicate}:${object}`); state.relations = state.relations.filter((uri) => uri !== object); return true; },
+    addRelation: (predicate: string, object: string) => { log.push(`add:${predicate}:${object}`); state.relations.push(object); return true; },
   } as unknown as ZoteroWritableItem;
   return { item, state, log };
 }
@@ -38,6 +41,7 @@ function harness(items: ReturnType<typeof fakeItem>[], hooks: { duringTransactio
     Items: { getByLibraryAndKey: (libraryID: number, key: string) => items.find(({ item }) => item.libraryID === libraryID && item.key === key)?.item ?? false, trashTx: async () => undefined },
     Collections: { getByLibrary: () => [], getByParent: () => [] },
     Collection: class {},
+    URI: { getURIItemLibraryKey: (uri: string) => { const match = /groups\/(\d+)\/items\/(\w+)$/.exec(uri); return match ? { libraryID: Number(match[1]), key: match[2]! } : false; } },
     DB: {
       executeTransaction: async <T>(fn: () => Promise<T>) => {
         inTransaction = true; events.push("begin");
@@ -180,6 +184,48 @@ describe("updateFieldsBatch — one transaction per chunk, each item re-checked 
     const a = fakeItem(MY, "A", { issue: "" });
     const results = await harness([a]).api.updateFieldsBatch([issue("GONE"), issue("A")]);
     expect(results.map((result) => result.status)).toEqual(["target-missing", "written"]);
+  });
+});
+
+describe("removeLinkedRelations / restoreLinkedRelations — one owl:sameAs on a My Library item (docs/stale-link-removal.md)", () => {
+  const GROUP_URI = "http://zotero.org/groups/2/items/SRC";
+  const OTHER_URI = "http://zotero.org/groups/3/items/KEEP";
+  const removal = { target: { libraryID: MY, itemKey: "MINE" }, linked: { libraryID: GROUP, itemKey: "SRC" } };
+
+  it("removes exactly that relation, saved like Zotero saves links, and returns the URI for the undo", async () => {
+    const target = fakeItem(MY, "MINE", { title: "Mine" }, [], JOURNAL_ARTICLE, [GROUP_URI, OTHER_URI]);
+    const source = fakeItem(GROUP, "SRC", { title: "Theirs" });
+    const { api, events } = harness([target, source]);
+    expect(await api.removeLinkedRelations([removal])).toEqual([{ status: "removed", uri: GROUP_URI }]);
+    expect(target.state.relations).toEqual([OTHER_URI]);
+    expect(target.state.fields).toEqual({ title: "Mine" });
+    expect(target.log).toEqual([`remove:owl:sameAs:${GROUP_URI}`, `save:${JSON.stringify({ skipSelect: true, skipDateModifiedUpdate: true, undoAction: "undo-action-edit-metadata", undoActionArgs: { count: 1 } })}`]);
+    expect(source.log).toEqual([]);
+    expect(events).toEqual(["begin", "commit"]);
+  });
+
+  it("a link already gone (or never on this side) → link-missing, nothing saved", async () => {
+    const target = fakeItem(MY, "MINE", {}, [], JOURNAL_ARTICLE, [OTHER_URI]);
+    const results = await harness([target]).api.removeLinkedRelations([removal]);
+    expect(results[0]?.status).toBe("link-missing");
+    expect(target.log).toEqual([]);
+  });
+
+  it("refuses a group target before anything is read", async () => {
+    const group = fakeItem(GROUP, "SRC", {}, [], JOURNAL_ARTICLE, ["http://zotero.org/users/1/items/MINE"]);
+    const { api, events } = harness([group]);
+    await expect(api.removeLinkedRelations([{ target: { libraryID: GROUP, itemKey: "SRC" }, linked: { libraryID: MY, itemKey: "MINE" } }])).rejects.toThrow("My Library");
+    expect(events).toEqual([]);
+  });
+
+  it("restore re-adds the exact URI only if absent: never a duplicate relation", async () => {
+    const absent = fakeItem(MY, "MINE", {}, [], JOURNAL_ARTICLE, []);
+    const present = fakeItem(MY, "BACK", {}, [], JOURNAL_ARTICLE, [GROUP_URI]);
+    const statuses = await harness([absent, present]).api.restoreLinkedRelations([{ target: { libraryID: MY, itemKey: "MINE" }, uri: GROUP_URI }, { target: { libraryID: MY, itemKey: "BACK" }, uri: GROUP_URI }]);
+    expect(statuses).toEqual(["restored", "already-present"]);
+    expect(absent.state.relations).toEqual([GROUP_URI]);
+    expect(present.state.relations).toEqual([GROUP_URI]);
+    expect(present.log).toEqual([]);
   });
 });
 

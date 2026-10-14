@@ -1,7 +1,7 @@
 import type { DifferenceClass, DifferenceField, FieldValue } from "../comparison/differenceEngine.js";
 import type { ImportOutcome } from "./importExecutor.js";
 import type { ReconcileOutcome, ReconcileStatus } from "./reconcileExecutor.js";
-import type { FieldWrite, UpdateStatus, WriteItemRef } from "./writeApi.js";
+import type { FieldWrite, LinkRemovalResult, LinkRestoreStatus, UpdateStatus, WriteItemRef } from "./writeApi.js";
 
 /**
  * §26 transaction log entries for Phase 3, as data. Append-only JSONL on disk
@@ -74,7 +74,39 @@ export interface RevertLogEntry {
   detail?: string;
 }
 
-export type LogEntry = ImportLogEntry | UndoLogEntry | MetadataLogEntry | RevertLogEntry;
+/** docs/stale-link-removal.md: one `owl:sameAs` removal attempt, one line per pair, sharing a session. */
+export interface LinkLogEntry {
+  id: string;
+  action: "remove_link";
+  session: string;
+  confirmedAt: string;
+  target: { libraryID: number; itemKey: string; title: string };
+  linked: { libraryID: number; itemKey: string; title: string; libraryName: string };
+  status: LinkRemovalResult["status"] | "failed";
+  /** The exact relation removed; the undo re-adds precisely this. Present only when removed. */
+  uri?: string;
+  detail?: string;
+  /** Why the rules deny the pair, so "why did I remove this?" stays answerable. */
+  evidence: readonly string[];
+  undoneAt?: string;
+}
+
+export interface LinkRestoreLogEntry {
+  id: string;
+  action: "restore_link";
+  reverses: string;
+  at: string;
+  status: LinkRestoreStatus | "failed";
+}
+
+export type LogEntry = ImportLogEntry | UndoLogEntry | MetadataLogEntry | RevertLogEntry | LinkLogEntry | LinkRestoreLogEntry;
+
+/** What one link undo restores: every removed, un-undone entry of the latest link session. */
+export function lastLinkSession(entries: readonly LogEntry[]): LinkLogEntry[] {
+  const undoable = entries.filter((entry): entry is LinkLogEntry => entry.action === "remove_link" && entry.status === "removed" && entry.uri !== undefined && !entry.undoneAt);
+  const last = undoable[undoable.length - 1];
+  return last ? undoable.filter((entry) => entry.session === last.session) : [];
+}
 
 export function metadataLogEntry(outcome: ReconcileOutcome, id: string, session?: string): MetadataLogEntry {
   const { plan } = outcome;
@@ -151,7 +183,7 @@ export function logEntryID(now: Date, random: () => number = Math.random): strin
 export function isLogEntry(value: unknown): value is LogEntry {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Partial<LogEntry>;
-  return typeof entry.id === "string" && (entry.action === "import" || entry.action === "undo" || entry.action === "update_metadata" || entry.action === "revert_metadata");
+  return typeof entry.id === "string" && ["import", "undo", "update_metadata", "revert_metadata", "remove_link", "restore_link"].includes(entry.action as string);
 }
 
 /** One JSON object per line; malformed lines are dropped rather than failing the whole log (§40: fail loud elsewhere, not on read). */

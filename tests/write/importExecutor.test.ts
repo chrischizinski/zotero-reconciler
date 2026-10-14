@@ -53,7 +53,9 @@ function fakeWriteAPI(script: {
     trashItems: async (refs) => { calls.push(`trash:${refs.map((ref) => ref.itemKey).join(",")}`); },
     // The import path must never edit an existing item's fields (Phase 3 invariant 1).
     updateFields: async () => { throw new Error("import must not edit fields"); },
-    updateFieldsBatch: async () => { throw new Error("import must not edit fields"); }
+    updateFieldsBatch: async () => { throw new Error("import must not edit fields"); },
+    removeLinkedRelations: async () => { throw new Error("import must not edit links"); },
+    restoreLinkedRelations: async () => { throw new Error("import must not edit links"); }
   };
   return { api, calls, created };
 }

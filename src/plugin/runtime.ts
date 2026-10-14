@@ -2,6 +2,7 @@ import { CoverageColumn, type ItemTreeManagerAPI } from "../zotero/coverageColum
 import { FillMissingCommand } from "../zotero/fillMissingCommand.js";
 import { FindCopiesCommand } from "../zotero/findCopiesCommand.js";
 import { ImportCommand } from "../zotero/importCommand.js";
+import { LinkRepairCommand } from "../zotero/linkRepairCommand.js";
 import { IndexStore, type SnapshotFileSystem } from "../zotero/indexStore.js";
 import { MetadataDifferencesCommand } from "../zotero/metadataDifferencesCommand.js";
 import { ReconcileCommand } from "../zotero/reconcileCommand.js";
@@ -33,6 +34,7 @@ let importCommand: ImportCommand | undefined;
 let reconcileCommand: ReconcileCommand | undefined;
 let differencesCommand: MetadataDifferencesCommand | undefined;
 let fillMissingCommand: FillMissingCommand | undefined;
+let linkRepairCommand: LinkRepairCommand | undefined;
 let coverageColumn: CoverageColumn | undefined;
 
 /**
@@ -42,6 +44,8 @@ let coverageColumn: CoverageColumn | undefined;
 const ENABLE_IMPORT_PREF = "extensions.zotero-library-reconciler.enableImport";
 /** Phase 4 gate, separate from import: field edits are a different risk (docs/phase4-field-reconciliation.md §11). */
 const ENABLE_RECONCILE_PREF = "extensions.zotero-library-reconciler.enableReconcile";
+/** Outdated-link removal gate (docs/stale-link-removal.md): a different kind of write, its own switch. */
+const ENABLE_LINK_REPAIR_PREF = "extensions.zotero-library-reconciler.enableLinkRepair";
 
 type ReconcilerRuntime = {
   startup(): void;
@@ -108,6 +112,14 @@ runtimeGlobal.ZoteroLibraryReconciler = {
         store: transactionStore(),
       });
     }
+    if (prefEnabled(ENABLE_LINK_REPAIR_PREF)) {
+      linkRepairCommand = new LinkRepairCommand(Zotero as ConstructorParameters<typeof LinkRepairCommand>[0], {
+        writeAPI: zoteroWriteAPI(Zotero as unknown as ZoteroWriteAPI),
+        store: transactionStore(),
+        refreshIndex: () => command.refreshIndex(),
+        confirm: (message) => confirmDialog(message, "Undo Last Link Removal", "Restore"),
+      });
+    }
     // Read-only, so not gated; its Compare button exists only when the write path does.
     const reconcile = reconcileCommand;
     differencesCommand = new MetadataDifferencesCommand(Zotero as ConstructorParameters<typeof MetadataDifferencesCommand>[0], reconcile ? {
@@ -122,11 +134,12 @@ runtimeGlobal.ZoteroLibraryReconciler = {
       importCommand?.register(window);
       reconcileCommand?.register(window);
       fillMissingCommand?.register(window);
+      linkRepairCommand?.register(window);
       differencesCommand.register(window);
     }
     coverageColumn.register();
     void command.restoreIndex().catch((error: unknown) => log(`Index restore failed: ${String(error)}`));
-    const enabled = [importCommand ? `Phase 3 import (${ENABLE_IMPORT_PREF})` : "", reconcileCommand ? `Phase 4 metadata update (${ENABLE_RECONCILE_PREF})` : ""].filter(Boolean);
+    const enabled = [importCommand ? `Phase 3 import (${ENABLE_IMPORT_PREF})` : "", reconcileCommand ? `Phase 4 metadata update (${ENABLE_RECONCILE_PREF})` : "", linkRepairCommand ? `link repair (${ENABLE_LINK_REPAIR_PREF})` : ""].filter(Boolean);
     log(enabled.length > 0 ? `Started; ENABLED: ${enabled.join(", ")}.` : "Started read-only matching foundation.");
   },
   shutdown(): void {
@@ -138,6 +151,8 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     reconcileCommand = undefined;
     fillMissingCommand?.unregister();
     fillMissingCommand = undefined;
+    linkRepairCommand?.unregister();
+    linkRepairCommand = undefined;
     differencesCommand?.unregister();
     differencesCommand = undefined;
     findCopiesCommand?.unregister();
@@ -149,6 +164,7 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     importCommand?.register(window);
     reconcileCommand?.register(window);
     fillMissingCommand?.register(window);
+    linkRepairCommand?.register(window);
     differencesCommand?.register(window);
   },
   onMainWindowUnload(window: Window): void {
@@ -156,6 +172,7 @@ runtimeGlobal.ZoteroLibraryReconciler = {
     importCommand?.unregister(window);
     reconcileCommand?.unregister(window);
     fillMissingCommand?.unregister(window);
+    linkRepairCommand?.unregister(window);
     differencesCommand?.unregister(window);
   },
 };

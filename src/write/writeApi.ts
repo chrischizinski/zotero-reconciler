@@ -69,6 +69,24 @@ export interface UpdateResult {
   stored?: Readonly<Record<string, FieldValue>>;
 }
 
+/** A Zotero `owl:sameAs` link from a My Library item to a group item. */
+export interface LinkRemoval {
+  target: WriteItemRef;
+  linked: WriteItemRef;
+}
+
+/** `removed` carries the exact relation URI, so an undo can put back precisely what was taken. */
+export type LinkRemovalResult =
+  | { status: "removed"; uri: string }
+  | { status: "link-missing" | "target-missing"; detail: string };
+
+export interface LinkRestore {
+  target: WriteItemRef;
+  uri: string;
+}
+
+export type LinkRestoreStatus = "restored" | "already-present" | "target-missing";
+
 export interface WriteAPI {
   /** The user library's ID; Phase 3 only ever imports into it. */
   userLibraryID(): number;
@@ -106,4 +124,13 @@ export interface WriteAPI {
    * field outside the allowlist, or if a save fails (the caller retries item by item).
    */
   updateFieldsBatch(updates: readonly FieldUpdate[]): Promise<UpdateResult[]>;
+  /**
+   * docs/stale-link-removal.md: in ONE transaction (one ⌘Z step), remove the `owl:sameAs`
+   * relation from each My Library target to its linked item, only if it is still there.
+   * Nothing else on the item changes and the linked item is never written. Throws on a
+   * target outside My Library.
+   */
+  removeLinkedRelations(removals: readonly LinkRemoval[]): Promise<LinkRemovalResult[]>;
+  /** Plugin undo: re-adds each relation only if absent (compare-and-swap in reverse). */
+  restoreLinkedRelations(restores: readonly LinkRestore[]): Promise<LinkRestoreStatus[]>;
 }
