@@ -466,3 +466,10 @@ Still open from the review (not changed):
   #16 #17 (+#6 swapped title/bookTitle); data errors #3 #8 (wrong DOI in My Library), #9 #12
   (wrong type in My Library), #13 (1933 in hdfw-book); policy #5 #10 (edition/version), #15
   (conference paper vs proceedings journal article).
+- Pushed f2cbc0f. Decisions (user, 2026-10-14, "go with your recos"):
+  P1 = build "Remove outdated link" later → design note docs/stale-link-removal.md (not built;
+  relation lives on the My Library item; native undo covers relations).
+  P2 = user fixes the 7 data errors by hand in production Zotero (list in chat 2026-10-14:
+  #3 #8 DOIs, #9 #12 types, #13 year in hdfw-book, #6 both copies, #17 type + DOI).
+  P3 = edition/version/proceedings pairs stay REVIEW (no change).
+- To do in dev Zotero: run Audit once so the saved index uses the new Tier 1 rule.
